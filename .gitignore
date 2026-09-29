@@ -1,0 +1,43 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Ee]xceptionCapture/
+[Rr]ecordings/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+
+# Unity asset meta files for ignored folders
+[Ll]ibrary/*.meta
+[Tt]emp/*.meta
+[Oo]bj/*.meta
+[Bb]uild/*.meta
+[Bb]uilds/*.meta
+[Ll]ogs/*.meta
+[Uu]ser[Ss]ettings/*.meta
+
+# Builds / outputs
+*.apk
+*.aab
+*.unitypackage
+*.app
+*.exe
+*.symlink-lib
+
+# OS junk
+.DS_Store
+Thumbs.db
