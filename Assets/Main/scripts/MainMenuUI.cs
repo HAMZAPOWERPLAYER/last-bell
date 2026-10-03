@@ -3,14 +3,15 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// PART 7.1 main menu: Play / Settings / Credits / Quit.
+/// PART 7.1 main menu, restyled as the LAST BELL text-list menu.
 ///
-/// UI is built in code (same approach as PauseMenuUI) so it cannot drift from the scene file.
-/// Settings state, persistence and the graphics-tier mapping live in ONE place - GameSettings -
-/// so this panel and the pause menu's panel are two views of the same implementation.
+/// UI is still built in code (same approach as PauseMenuUI) so it cannot drift from the scene file.
+/// The presentation (procedural sprites, unscaled-time animation, highlight bar, grain, vignette,
+/// art fade) lives in ONE reusable component - LastBellMenuStyle - shared with the pause menu.
+/// Settings state, persistence and the graphics-tier mapping still live in GameSettings.
 ///
 /// Layout note: the canvas matches WIDTH (reference 800x600), so on a landscape phone the usable
-/// canvas is only ~360 units tall. Every row here stays inside +/-180 or it would be off-screen.
+/// canvas is only ~360 units tall. Every row stays inside +/-180 or it would be off-screen.
 /// </summary>
 public class MainMenuUI : MonoBehaviour
 {
@@ -19,8 +20,18 @@ public class MainMenuUI : MonoBehaviour
 
     [Range(0f, 1f)] public float menuAmbientVolume = 0.35f;
 
+    [Header("LAST BELL menu style")]
+    [Tooltip("Right-hand art slot. Empty = no art. Drop your own image (Sprite) in here later; " +
+             "it fades into darkness toward the left of the screen automatically.")]
+    public Sprite backdropArt;
+
+    [Tooltip("Optional display font. Empty = the project's built-in font. " +
+             "A third-party font belongs on the Licences screen.")]
+    public Font displayFont;
+
     Canvas canvas;
-    GameObject settingsPanel, creditsPanel;
+    LastBellMenuStyle style;
+    GameObject settingsPanel, creditsPanel, licencesPanel;
     Text sensitivityLabel, masterLabel, ambientLabel, sfxLabel, tierLabel;
     AudioSource ambientSource;
 
@@ -38,6 +49,19 @@ public class MainMenuUI : MonoBehaviour
         HideOtherCanvases();
         RefreshLabels();
         StartAmbient();
+    }
+
+    /// <summary>Android back button / Escape steps out of the open panel instead of doing nothing.</summary>
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape)) CloseTopPanel();
+    }
+
+    void CloseTopPanel()
+    {
+        if (licencesPanel != null && licencesPanel.activeSelf) { licencesPanel.SetActive(false); return; }
+        if (creditsPanel != null && creditsPanel.activeSelf) { creditsPanel.SetActive(false); return; }
+        if (settingsPanel != null && settingsPanel.activeSelf) { settingsPanel.SetActive(false); return; }
     }
 
     /// <summary>
@@ -94,40 +118,44 @@ public class MainMenuUI : MonoBehaviour
         scaler.referenceResolution = new Vector2(800f, 600f);
         scaler.matchWidthOrHeight = 0f;
 
-        // Backdrop
-        var bg = new GameObject("Backdrop", typeof(Image));
-        bg.transform.SetParent(canvas.transform, false);
-        var brt = bg.GetComponent<RectTransform>();
-        brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one;
-        brt.offsetMin = Vector2.zero; brt.offsetMax = Vector2.zero;
-        var bimg = bg.GetComponent<Image>();
-        bimg.color = new Color(0.02f, 0.03f, 0.03f, 1f);
-        bimg.raycastTarget = false;
-
         var font = BuiltinFont();
 
-        MakeText(canvas.transform, "Title", "HIGH SCHOOL HORROR", font, 34,
-            new Color(0.80f, 0.86f, 0.80f), new Vector2(0f, 138f), new Vector2(760f, 44f));
-        MakeText(canvas.transform, "Subtitle", "five floors. one way out.", font, 15,
-            new Color(0.48f, 0.55f, 0.50f), new Vector2(0f, 106f), new Vector2(700f, 26f));
-
-        float y = 54f;
-        MakeButton(canvas.transform, "Play", "PLAY", new Vector2(0f, y), new Vector2(300f, 40f), font, 22, OnPlay);
-        y -= 46f;
-        MakeButton(canvas.transform, "Settings", "SETTINGS", new Vector2(0f, y), new Vector2(300f, 40f), font, 22,
-            () => { settingsPanel.SetActive(true); RefreshLabels(); });
-        y -= 46f;
-        MakeButton(canvas.transform, "Credits", "CREDITS", new Vector2(0f, y), new Vector2(300f, 40f), font, 22,
-            () => creditsPanel.SetActive(true));
-        y -= 46f;
-        MakeButton(canvas.transform, "Quit", "QUIT", new Vector2(0f, y), new Vector2(300f, 40f), font, 22, OnQuit);
+        // ---- LAST BELL text-list menu ----
+        var styleGo = new GameObject("MenuStyle", typeof(RectTransform));
+        styleGo.transform.SetParent(canvas.transform, false);
+        style = styleGo.AddComponent<LastBellMenuStyle>();
+        style.displayFont = displayFont;
+        style.EnsureBuilt();
+        style.BuildArt(backdropArt);
+        style.BuildTitle("LAST BELL");
+        style.BuildSubtitle("two floors. three keys. one way out.");
+        style.AddItem(0, "PLAY", OnPlay);
+        style.AddItem(1, "SETTINGS", OpenSettings);
+        style.AddItem(2, "CREDITS", OpenCredits);
+        style.AddItem(3, "LICENCES", OpenLicences);
+        style.AddItem(4, "QUIT", OnQuit);
+        style.SettleClosed();
 
         BuildSettingsPanel(font);
         BuildCreditsPanel(font);
+        BuildLicencesPanel(font);
 
         settingsPanel.SetActive(false);
         creditsPanel.SetActive(false);
+        licencesPanel.SetActive(false);
+
+        StartCoroutine(style.OpenRoutine());
     }
+
+    void OpenSettings()
+    {
+        settingsPanel.SetActive(true);
+        RefreshLabels();
+    }
+
+    void OpenCredits() { creditsPanel.SetActive(true); }
+
+    void OpenLicences() { licencesPanel.SetActive(true); }
 
     void BuildSettingsPanel(Font font)
     {
@@ -184,6 +212,38 @@ public class MainMenuUI : MonoBehaviour
             () => creditsPanel.SetActive(false));
     }
 
+    /// <summary>
+    /// Licence screen. Third-party code/art credits plus the reserved entry for a future free
+    /// SIL OFL display font - if one is ever added it MUST be listed here.
+    /// </summary>
+    void BuildLicencesPanel(Font font)
+    {
+        licencesPanel = MakePanel(canvas.transform, "LicencesPanel", new Color(0.02f, 0.03f, 0.03f, 0.97f));
+        MakeText(licencesPanel.transform, "Title", "LICENCES", font, 30,
+            new Color(0.80f, 0.86f, 0.80f), new Vector2(0f, 150f), new Vector2(520f, 40f));
+
+        string body =
+            "BASE PROJECT\n" +
+            "High School Horror Android - yurifarion\n" +
+            "CC-BY-4.0, attribution required (License.txt)\n\n" +
+            "TOUCH CONTROLS\n" +
+            "NeKONTROLLER - NeKoRoSYS, MIT licence\n\n" +
+            "MOBILE PORT, ADDITIONS AND SYSTEMS\n" +
+            "HAMZA POWERPLAYER\n\n" +
+            "TYPE\n" +
+            "No third-party display font is bundled. Menu text\n" +
+            "uses Unity's built-in font. A free SIL OFL font\n" +
+            "added later must be credited here.\n\n" +
+            "ART\n" +
+            "The menu art placeholder is a screenshot of this\n" +
+            "game's own level. No third-party art is used.";
+
+        MakeText(licencesPanel.transform, "Body", body, font, 13,
+            new Color(0.72f, 0.78f, 0.74f), new Vector2(0f, 0f), new Vector2(660f, 250f));
+        MakeButton(licencesPanel.transform, "LicencesBack", "BACK", new Vector2(0f, -155f), new Vector2(200f, 38f), font, 20,
+            () => licencesPanel.SetActive(false));
+    }
+
     Text MakeSettingRow(Transform parent, Font font, string caption, float y,
         UnityEngine.Events.UnityAction minus, UnityEngine.Events.UnityAction plus)
     {
@@ -228,36 +288,6 @@ public class MainMenuUI : MonoBehaviour
         return t;
     }
 
-    /// <summary>
-    /// A label that FILLS its parent, centred both ways.
-    ///
-    /// This is the fix for the stacked-letter bug: the previous label was created with centre
-    /// anchors and sizeDelta = zero, i.e. a 0x0 rect. With HorizontalWrapMode.Wrap a zero-width
-    /// rect wraps after every single character, which renders "PLAY" as P/L/A/Y stacked vertically.
-    /// Stretching the rect to the parent and using Overflow means a short label can never wrap.
-    /// </summary>
-    Text MakeStretchedText(Transform parent, string name, string text, Font font, int size, Color colour)
-    {
-        var go = new GameObject(name, typeof(Text));
-        go.transform.SetParent(parent, false);
-        var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero;
-        rt.anchorMax = Vector2.one;
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.offsetMin = new Vector2(6f, 0f);      // small side padding so text never touches the edge
-        rt.offsetMax = new Vector2(-6f, 0f);
-        var t = go.GetComponent<Text>();
-        t.font = font;
-        t.fontSize = size;
-        t.color = colour;
-        t.text = text;
-        t.alignment = TextAnchor.MiddleCenter;
-        t.horizontalOverflow = HorizontalWrapMode.Overflow;
-        t.verticalOverflow = VerticalWrapMode.Overflow;
-        t.raycastTarget = false;
-        return t;
-    }
-
     void MakeButton(Transform parent, string name, string label, Vector2 anchoredPos, Vector2 sizeDelta,
         Font font, int fontSize, UnityEngine.Events.UnityAction action)
     {
@@ -279,7 +309,23 @@ public class MainMenuUI : MonoBehaviour
         btn.colors = colours;
         if (action != null) btn.onClick.AddListener(action);
 
-        MakeStretchedText(go.transform, "Label", label, font, fontSize, new Color(0.86f, 0.92f, 0.88f));
+        var textGo = new GameObject("Label", typeof(Text));
+        textGo.transform.SetParent(go.transform, false);
+        var trt = textGo.GetComponent<RectTransform>();
+        trt.anchorMin = Vector2.zero;
+        trt.anchorMax = Vector2.one;
+        trt.pivot = new Vector2(0.5f, 0.5f);
+        trt.offsetMin = new Vector2(6f, 0f);
+        trt.offsetMax = new Vector2(-6f, 0f);
+        var t = textGo.GetComponent<Text>();
+        t.font = font;
+        t.fontSize = fontSize;
+        t.color = new Color(0.86f, 0.92f, 0.88f);
+        t.text = label;
+        t.alignment = TextAnchor.MiddleCenter;
+        t.horizontalOverflow = HorizontalWrapMode.Overflow;
+        t.verticalOverflow = VerticalWrapMode.Overflow;
+        t.raycastTarget = false;
     }
 
     // ------------------------------------------------------------------ behaviour

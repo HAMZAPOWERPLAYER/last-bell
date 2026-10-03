@@ -6167,6 +6167,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   menuAmbient: {fileID: 8300000, guid: 90883856c8a65bd4187d0c6229cbb100, type: 3}
   menuAmbientVolume: 0.35
+  backdropArt: {fileID: 21300000, guid: 7fda92967e3f4f44da85712cc59d4492, type: 3}
+  displayFont: {fileID: 0}
 --- !u!4 &1628310509
 Transform:
   m_ObjectHideFlags: 0

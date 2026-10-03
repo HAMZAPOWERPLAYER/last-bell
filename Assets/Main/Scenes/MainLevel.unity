@@ -12649,6 +12649,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ebde7571c0ba4444586602950c5b89a5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  backdropArt: {fileID: 21300000, guid: 7fda92967e3f4f44da85712cc59d4492, type: 3}
+  backdropArtAlpha: 0.55
 --- !u!4 &717336934
 Transform:
   m_ObjectHideFlags: 0

@@ -1,22 +1,43 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 
 /// <summary>
 /// PART 7 menus: pause panel, settings panel and credits panel, plus the HUD pause button.
+/// Restyled as the LAST BELL text-list menu (see LastBellMenuStyle).
 ///
 /// The UI is built in code at runtime rather than baked into the scene - it cannot drift out of
-/// sync with the scene file, and it needs no editor builder pass. Swap any of this for a designed
-/// prefab later; the hook-ups (PauseManager, GameSettings) stay the same.
+/// sync with the scene file, and it needs no editor builder pass.
 ///
 /// Pause button placement: TOP-LEFT, deliberately outside the look pad's right-half drag zone
 /// (PART 7.5). The left half only has the movement stick at bottom-left, so the top-left is free.
+/// Because the new menu title also owns the top-left, the button fades out while the menu is open
+/// and comes back on close - it is never draggable-into while the menu is up.
+///
+/// TIMING: every animation here runs on UNSCALED time, because this menu is only ever visible
+/// while PauseManager has set Time.timeScale = 0. Nothing in this file touches pause state,
+/// audio state or monster state - it only reacts to PauseManager's PauseChanged event.
 /// </summary>
 public class PauseMenuUI : MonoBehaviour
 {
+    [Header("LAST BELL menu style")]
+    [Tooltip("Right-hand art slot. Empty = no art. Drop your own image (Sprite) in here later; " +
+             "it fades into darkness toward the left of the screen automatically.")]
+    public Sprite backdropArt;
+
+    [Range(0f, 1f)]
+    [Tooltip("Art opacity here is deliberately below 1 so the frozen world still hints through.")]
+    public float backdropArtAlpha = 0.55f;
+
     Canvas canvas;
-    GameObject pausePanel, settingsPanel, creditsPanel;
+    LastBellMenuStyle style;
+    GameObject settingsPanel, creditsPanel;
+    CanvasGroup pauseButtonGroup;
     Text sensitivityLabel, masterLabel, ambientLabel, sfxLabel, tierLabel;
+
+    Coroutine transition;
+    bool closing;
 
     static readonly string[] TierNames = { "Low", "Medium", "High" };
 
@@ -43,15 +64,33 @@ public class PauseMenuUI : MonoBehaviour
         if (PauseManager.Instance != null) PauseManager.Instance.PauseChanged -= OnPauseChanged;
     }
 
+    /// <summary>Android back button / Escape steps out of the open panel first.</summary>
+    void Update()
+    {
+        if (!Input.GetKeyDown(KeyCode.Escape)) return;
+        if (creditsPanel != null && creditsPanel.activeSelf) { creditsPanel.SetActive(false); return; }
+        if (settingsPanel != null && settingsPanel.activeSelf) { settingsPanel.SetActive(false); }
+    }
+
     void OnPauseChanged(bool paused)
     {
-        pausePanel.SetActive(paused);
+        if (style == null) return;
+
         if (!paused)
         {
-            settingsPanel.SetActive(false);
-            creditsPanel.SetActive(false);
+            if (settingsPanel != null) settingsPanel.SetActive(false);
+            if (creditsPanel != null) creditsPanel.SetActive(false);
         }
         if (paused) RefreshLabels();
+
+        // Re-entrant safe: a new state change always cancels the animation in flight. Both
+        // routines end by snapping every value to a defined state, so rapid toggling can never
+        // strand an alpha, scale or position half way through.
+        if (transition != null) { StopCoroutine(transition); transition = null; }
+
+        if (paused) transition = StartCoroutine(style.OpenRoutine());
+        else if (style.IsOpen) transition = StartCoroutine(style.CloseRoutine());
+        else { style.StopAnimations(); style.SettleClosed(); }
     }
 
     // ------------------------------------------------------------------ construction
@@ -77,44 +116,44 @@ public class PauseMenuUI : MonoBehaviour
 
         var font = BuiltinFont();
 
-        // ---- HUD pause button: top-left, outside the right-half look-pad drag zone ----
-        MakeButton(canvas.transform, "PauseButton", "II",
-            new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(48f, -48f), new Vector2(72f, 72f),
-            font, 32, OnPausePressed, new Color(0.10f, 0.12f, 0.11f, 0.85f));
-
-        // ---- pause panel ----
-        pausePanel = MakePanel(canvas.transform, "PausePanel", new Color(0.02f, 0.03f, 0.03f, 0.90f));
-
-        // NOTE ON LAYOUT: the canvas matches WIDTH (reference 800x600), so on a landscape phone the
-        // usable canvas is only ~360 units tall - anything beyond +/-180 is off-screen. Every menu
-        // below is laid out to fit inside that, which is why the rows are compact.
-        MakeText(pausePanel.transform, "Title", "PAUSED", font, 34,
-            new Color(0.80f, 0.86f, 0.80f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(0f, 130f), new Vector2(520f, 44f));
-
-        float y = 72f;
-        MakeButton(pausePanel.transform, "Resume", "RESUME", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(0f, y), new Vector2(300f, 40f), font, 22, OnResume);
-        y -= 46f;
-        MakeButton(pausePanel.transform, "Settings", "SETTINGS", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(0f, y), new Vector2(300f, 40f), font, 22, () => { settingsPanel.SetActive(true); RefreshLabels(); });
-        y -= 46f;
-        MakeButton(pausePanel.transform, "Credits", "CREDITS", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(0f, y), new Vector2(300f, 40f), font, 22, () => creditsPanel.SetActive(true));
-        y -= 46f;
-        MakeButton(pausePanel.transform, "MainMenu", "MAIN MENU", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(0f, y), new Vector2(300f, 40f), font, 22, OnMainMenu);
-        y -= 46f;
-        MakeButton(pausePanel.transform, "Quit", "QUIT", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(0f, y), new Vector2(300f, 40f), font, 22, OnQuit);
+        // ---- LAST BELL text-list menu (the panel IS the menu) ----
+        var styleGo = new GameObject("MenuStyle", typeof(RectTransform));
+        styleGo.transform.SetParent(canvas.transform, false);
+        style = styleGo.AddComponent<LastBellMenuStyle>();
+        style.backdropColour = new Color(0.016f, 0.021f, 0.020f, 0.93f);   // let the frozen world hint through
+        style.artAlpha = Mathf.Clamp01(backdropArtAlpha);
+        style.EnsureBuilt();
+        style.BuildArt(backdropArt);                // single serialized slot; empty by default
+        style.BuildTitle("PAUSED");
+        style.AddItem(0, "RESUME", OnResume);
+        style.AddItem(1, "SETTINGS", OpenSettings);
+        style.AddItem(2, "CREDITS", OpenCredits);
+        style.AddItem(3, "MAIN MENU", OnMainMenu);
+        style.AddItem(4, "QUIT", OnQuit);
+        style.SettleClosed();
 
         BuildSettingsPanel(font);
         BuildCreditsPanel(font);
 
-        pausePanel.SetActive(false);
+        // ---- HUD pause button: top-left, outside the right-half look-pad drag zone ----
+        var pauseButton = MakeButton(canvas.transform, "PauseButton", "II",
+            new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(48f, -48f), new Vector2(72f, 72f),
+            font, 32, OnPausePressed, new Color(0.10f, 0.12f, 0.11f, 0.85f));
+        pauseButtonGroup = pauseButton.gameObject.AddComponent<CanvasGroup>();
+        pauseButtonGroup.alpha = 1f;
+        style.RegisterAuxFade(pauseButtonGroup, 1f, 0f);   // hide while the menu owns the screen
+
         settingsPanel.SetActive(false);
         creditsPanel.SetActive(false);
     }
+
+    void OpenSettings()
+    {
+        settingsPanel.SetActive(true);
+        RefreshLabels();
+    }
+
+    void OpenCredits() { creditsPanel.SetActive(true); }
 
     void BuildSettingsPanel(Font font)
     {
@@ -204,7 +243,7 @@ public class PauseMenuUI : MonoBehaviour
         rt.offsetMax = Vector2.zero;
         var img = go.GetComponent<Image>();
         img.color = colour;
-        img.raycastTarget = true;      // blocks the HUD underneath while paused
+        img.raycastTarget = true;      // blocks the HUD underneath while a panel is up
         return go;
     }
 
@@ -231,7 +270,7 @@ public class PauseMenuUI : MonoBehaviour
         return t;
     }
 
-    void MakeButton(Transform parent, string name, string label, Vector2 anchorMin, Vector2 anchorMax,
+    GameObject MakeButton(Transform parent, string name, string label, Vector2 anchorMin, Vector2 anchorMax,
         Vector2 anchoredPos, Vector2 sizeDelta, Font font, int fontSize, UnityEngine.Events.UnityAction action,
         Color? overrideColour = null)
     {
@@ -257,6 +296,7 @@ public class PauseMenuUI : MonoBehaviour
 
         MakeText(go.transform, "Label", label, font, fontSize, new Color(0.86f, 0.92f, 0.88f),
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        return go;
     }
 
     // ------------------------------------------------------------------ behaviour
@@ -291,13 +331,32 @@ public class PauseMenuUI : MonoBehaviour
     void OnPausePressed()
     {
         if (PauseManager.Instance != null) PauseManager.Instance.Toggle();
-        else ShowPause(!pausePanel.activeSelf);
+        else ShowPause(!style.IsOpen);
     }
 
-    void ShowPause(bool show) { pausePanel.SetActive(show); }
+    void ShowPause(bool show)
+    {
+        if (style == null) return;
+        if (show) StartCoroutine(style.OpenRoutine());
+        else StartCoroutine(style.CloseRoutine());
+    }
 
+    /// <summary>
+    /// RESUME plays the 0.15 s reverse BEFORE unpausing, then hands straight over to
+    /// PauseManager.Resume() - the pause channel itself is untouched and nothing is left frozen.
+    /// </summary>
     void OnResume()
     {
+        if (closing) return;
+        StartCoroutine(CloseThenResume());
+    }
+
+    IEnumerator CloseThenResume()
+    {
+        closing = true;
+        if (transition != null) { StopCoroutine(transition); transition = null; }
+        yield return style.CloseRoutine();
+        closing = false;
         if (PauseManager.Instance != null) PauseManager.Instance.Resume();
         else ShowPause(false);
     }
@@ -313,4 +372,10 @@ public class PauseMenuUI : MonoBehaviour
         if (PauseManager.Instance != null) PauseManager.Instance.QuitApp();
         else Application.Quit();
     }
+
+    // ------------------------------------------------------------------ test hooks (read-only)
+    public LastBellMenuStyle Style { get { return style; } }
+    public GameObject SettingsPanel { get { return settingsPanel; } }
+    public GameObject CreditsPanel { get { return creditsPanel; } }
+    public CanvasGroup PauseButtonGroup { get { return pauseButtonGroup; } }
 }

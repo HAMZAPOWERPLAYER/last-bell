@@ -19,9 +19,9 @@ reworked for mobile with new touch controls, lighting, settings and menus. See
 | Package ID | `com.hamzapowerplayer.lastbell` |
 | Product name | Last Bell |
 | Company | HAMZA POWERPLAYER |
-| Version | `0.1` (bundleVersion) · AndroidBundleVersionCode `1` |
+| Version | `0.2` (bundleVersion) · AndroidBundleVersionCode `2` |
 | Orientation | Landscape |
-| Active build platform | `StandaloneWindows64` — switch to Android to produce an APK/AAB |
+| Active build platform | `Android` — release AAB builds with **IL2CPP / ARM64** (see [Building for Android](#building-for-android)) |
 | Input | Unity Input System **and** legacy Input Manager (`Active Input Handling = Both`) |
 | Connectivity | Fully offline — no login, no accounts, no ads, no analytics |
 
@@ -147,13 +147,32 @@ Floor 1 was originally **completely unlit** (ambient colour only). Fixtures were
 
 ## Menus & settings
 
-**Main menu** — PLAY · SETTINGS · CREDITS · QUIT
+**Main menu** — PLAY · SETTINGS · CREDITS · LICENCES · QUIT
 
 There is **no Continue button**: the game has no save system, and Play always starts a fresh run.
 
 **Pause menu** — RESUME · SETTINGS · CREDITS · MAIN MENU · QUIT
 Pausing freezes `Time.timeScale`, mutes audio, stops the entity's coroutines, and blocks player
 input so the view cannot drift behind the panel. Resuming re-arms the entity's safe place.
+
+**Style.** Both menus are the LAST BELL text-list style: a wide-spaced thin title top-left with a
+subtitle, left-aligned uppercase items with **no boxes or panels**, a translucent slanted
+(parallelogram) highlight bar that slides in behind the pressed item, tiled grain and a slow
+vignette pulse over a near-black background, and a right-hand art image that fades into darkness
+toward the left. All of it lives in **one** reusable component, `LastBellMenuStyle`, animates only
+`RectTransform` / `CanvasGroup.alpha` / `Graphic` colour, uses **unscaled time** (so the pause menu
+animates while `Time.timeScale = 0`) and generates every sprite procedurally — no new packages and
+no new art assets beyond the placeholder below.
+
+**Art slot.** `backdropArt` is a single serialized `Sprite` field on both `MainMenuUI` and
+`PauseMenuUI` — drop your own image in to replace the placeholder corridor screenshot
+(`Assets/Main/UI/Art/MenuBackdrop_Corridor.png`, captured from this game's own first-floor
+corridor). The pause menu renders it at `backdropArtAlpha` (default 0.55) so the frozen world still
+hints through.
+
+**Font.** Menu text uses Unity's built-in font unless `displayFont` is set on the menu component.
+There is a reserved **TYPE** entry on the Licences screen: any free SIL OFL display font added
+later must be credited there.
 
 **Settings** (shared by both menus, single source of truth in `GameSettings`)
 
@@ -187,6 +206,7 @@ Assets/
     Material/   authored materials, incl. Floor2/ texture materials
     Prefab/     Key, Page, monster prefabs
     UI/         HUD sprites + generated control sprites
+    UI/Art/     menu backdrop placeholder (game screenshot, ASTC 6x6 on Android)
   ThirdAssets/
     school/     school props + building shell (FBX, embedded materials)
     FloorTile/  floor material set
@@ -208,7 +228,8 @@ Assets/
 | `KeyTrigger.cs` / `PageTrigger.cs` / `ExitTrigger.cs` | World triggers. |
 | `SpawnItem.cs` | Instantiates the key/page prefab at a spawn spot. |
 | `PauseManager.cs` | Pause state, freeze, mute, return-to-menu, quit. |
-| `PauseMenuUI.cs` / `MainMenuUI.cs` | Code-built menu UI. |
+| `PauseMenuUI.cs` / `MainMenuUI.cs` | Code-built menu UI in the LAST BELL text-list style. |
+| `LastBellMenuStyle.cs` | Menu presentation: procedural sprites + unscaled coroutine animation (shared by both menus). |
 | `GameSettings.cs` | Settings values, persistence, graphics tier mapping. |
 | `AudioVolumeController.cs` | Master/Ambient/SFX application. |
 | `AmbientAudioManager.cs` | Random ambient cue scheduler. |
@@ -221,23 +242,32 @@ Assets/
 | `Tools/NeKONTROLLER/*` | Rebuild touch UI, verify wiring, runtime smoke test, screenshot |
 | `Tools/Floor1/*` | Audit, texture presets, lighting pass, content placement |
 | `Tools/Floor2/*` | Audit, texture presets, lighting, stairs cue, floor revert |
-| `Tools/Part7/*` | Pause manager install, pause runtime test, audio mixer, report |
+| `Tools/Part7/*` | Pause manager install, pause runtime test, pause channel test, audio mixer, report |
 | `Tools/Part8/*` | Package identity |
+| `Tools/Part9/*` | Menu backdrop capture + assign, runtime menu animation test, Game View device sizes |
 | `Tools/Audio/*` | Ambient bed compression |
 
 ---
 
 ## Building for Android
 
-1. **Switch the active platform to Android** (File ▸ Build Settings ▸ Android ▸ Switch Platform).
-   The project currently sits on `StandaloneWindows64`, so the Android texture overrides (below)
-   and the package ID are not exercised until you switch.
-2. Package ID is already set to `com.hamzapowerplayer.lastbell`.
-3. Set a release **version name** and increment **AndroidBundleVersionCode** per upload — both are
-   still at their defaults (`0.1` / `1`).
-4. **Texture compression**: albedo maps use **ASTC 6×6**, normal maps **ASTC 4×4**, data maps
+1. **The active platform is `Android`.** Unity **2022.3.62f3** with the Android module (SDK 34.0.0,
+   NDK r23b) is installed. If the editor cannot find a JDK, point
+   *Preferences ▸ External Tools ▸ JDK* at a JDK 11 install — the module's bundled `OpenJDK` folder
+   is not present on this machine.
+2. Package ID is `com.hamzapowerplayer.lastbell`.
+3. **Release config:** scripting backend **IL2CPP**, architecture **ARM64** (required by Play),
+   **Build App Bundle (Google Play)** ticked, **Release** build type, minSdk 22 / targetSdk auto (36).
+4. **Signing:** custom keystore `C:/MOBILE-Keys/lastbell.keystore`, alias `lastbell`. The keystore
+   file lives outside the repo and the password is **not** committed anywhere — supply it per build
+   (locally in Player Settings ▸ Publishing, or via the CI secrets in [CLOUD_BUILD.md](CLOUD_BUILD.md)).
+5. **Version:** currently `0.2` (bundleVersion) / `2` (AndroidBundleVersionCode). Increment the code
+   for every upload.
+6. **Texture compression**: albedo maps use **ASTC 6×6**, normal maps **ASTC 4×4**, data maps
    (roughness / AO / displacement) **ASTC 6×6 at ≤512 px**, with `wrapMode = Repeat` for tiling.
-5. Build an **AAB** for Play Store upload.
+7. Build an **AAB** for Play Store upload. A release AAB (`Builds/LastBell-0.2-v2.aab`, 38 MB,
+   ARM64, IL2CPP, `jar verified`) and its verification record
+   (`Builds/aab_verification_0.2-v2.txt`) were produced this way.
 
 **Budget note.** Total new audio is well under the 15–20 MB slice, and the imported CC0 textures
 occupy roughly 3.8 MB compressed (58 MB uncompressed) against a 250 MB overall budget.
@@ -281,6 +311,10 @@ Last Bell is **fully offline**:
   differs.
 - **Settings panel layout code is duplicated** between `MainMenuUI` and `PauseMenuUI`. Behaviour is
   single-sourced in `GameSettings`; only the widget construction repeats.
+- **In the pause menu, Escape with a sub-panel open closes the panel *and* unpauses.** That is the
+  pre-existing `PauseManager` behaviour (the pause state owns Escape) left deliberately untouched —
+  use the on-screen **BACK** button to return to the pause list without resuming. On the main menu
+  Escape closes the open panel and stays on the menu.
 - **The base project's original menu canvas** still exists in the `Menu` scene but is disabled at
   runtime, so its `MenuAction` scripts keep running without drawing.
 - Floor 2 room lights are range-capped at 10 m to avoid light bleed and per-pixel cost.
