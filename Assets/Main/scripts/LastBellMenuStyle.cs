@@ -52,6 +52,7 @@ public class LastBellMenuStyle : MonoBehaviour
     // the highlight bar - stays inside the +/-180 unit safe band. Other menus keep the defaults.
     public float rowFirstY = FirstItemY;
     public float rowPitch = ItemPitch;
+    public float rowHeight = ItemHeight;
 
     // ------------------------------------------------------------------ tunables
     [Header("Font (leave empty to use the project's built-in font)")]
@@ -473,7 +474,7 @@ public class LastBellMenuStyle : MonoBehaviour
         var rt = go.GetComponent<RectTransform>();
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0f, 0.5f);                 // left-anchored list
-        rt.sizeDelta = new Vector2(ItemWidth, ItemHeight);
+        rt.sizeDelta = new Vector2(ItemWidth, rowHeight);
         var rest = new Vector2(LeftMargin, rowFirstY - rowIndex * rowPitch);
         rt.anchoredPosition = rest;
 
@@ -832,6 +833,8 @@ public class LastBellMenuStyle : MonoBehaviour
         {
             float wait = Mathf.Lerp(flickerMinInterval, flickerMaxInterval, (float)_rng.NextDouble());
             yield return WaitUnscaled(wait);
+            // 2.0 accessibility: no hard title dips when the player has reduced flashing.
+            if (GameSettings.ReduceFlashing) continue;
             int dips = 1 + _rng.Next(2);
             for (int d = 0; d < dips; d++)
             {

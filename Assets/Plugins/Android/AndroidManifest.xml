@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  2.0 OFFLINE BUILD - custom main (launcher) manifest.
+  Mirrors Unity's generated launcher template and strips the INTERNET permission that Unity
+  always declares in the unityLibrary manifest. The game is fully offline: no network access of
+  any kind, and the release policy check greps the built AAB for android.permission.INTERNET.
+
+  The manifest merger gives this main manifest priority over the unityLibrary manifest, so the
+  tools:node="remove" directive below wins and the final merged manifest ships without INTERNET.
+
+  Verification after a build (documented in RELEASE_CHECKLIST.md):
+    bundletool dump manifest (bundle path) | grep -i internet    (expect no output, see checklist)
+-->
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:installLocation="preferExternal">
+
+    <!-- Unity's own library manifest declares INTERNET; remove it for the offline build. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/app_icon" />
+
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true"
+        android:anyDensity="true" />
+</manifest>

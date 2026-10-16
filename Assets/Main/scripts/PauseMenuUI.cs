@@ -10,10 +10,10 @@ using UnityEngine.SceneManagement;
 /// The UI is built in code at runtime rather than baked into the scene - it cannot drift out of
 /// sync with the scene file, and it needs no editor builder pass.
 ///
-/// Pause button placement: TOP-LEFT, deliberately outside the look pad's right-half drag zone
-/// (PART 7.5). The left half only has the movement stick at bottom-left, so the top-left is free.
-/// Because the new menu title also owns the top-left, the button fades out while the menu is open
-/// and comes back on close - it is never draggable-into while the menu is up.
+/// Pause button placement: TOP-RIGHT. The look pad's right-half drag zone ignores touches that
+/// start on interactive UI (ControlPad's occlusion check), and the button carries a SafeAreaClamp
+/// so notches/cutouts cannot cover it. The button fades out while the menu is open and comes back
+/// on close - it is never draggable-into while the menu is up.
 ///
 /// TIMING: every animation here runs on UNSCALED time, because this menu is only ever visible
 /// while PauseManager has set Time.timeScale = 0. Nothing in this file touches pause state,
@@ -34,7 +34,7 @@ public class PauseMenuUI : MonoBehaviour
     LastBellMenuStyle style;
     GameObject settingsPanel, creditsPanel;
     CanvasGroup pauseButtonGroup;
-    Text sensitivityLabel, masterLabel, ambientLabel, sfxLabel, tierLabel;
+    Text sensitivityLabel, masterLabel, ambientLabel, sfxLabel, tierLabel, flashingLabel;
 
     Coroutine transition;
     bool closing;
@@ -157,6 +157,8 @@ public class PauseMenuUI : MonoBehaviour
         var pauseButton = MakeButton(canvas.transform, "PauseButton", "II",
             new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-48f, -48f), new Vector2(72f, 72f),
             font, 32, OnPausePressed, new Color(0.10f, 0.12f, 0.11f, 0.85f));
+        // 2.0: keep the button clear of notches / gesture areas on device (no-op on desktop).
+        pauseButton.gameObject.AddComponent<SafeAreaClamp>();
         pauseButtonGroup = pauseButton.gameObject.AddComponent<CanvasGroup>();
         pauseButtonGroup.alpha = 1f;
         style.RegisterAuxFade(pauseButtonGroup, 1f, 0f);   // hide while the menu owns the screen
@@ -180,7 +182,7 @@ public class PauseMenuUI : MonoBehaviour
             new Color(0.80f, 0.86f, 0.80f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
             new Vector2(0f, 138f), new Vector2(520f, 40f));
 
-        float y = 70f;
+        float y = 78f;
         sensitivityLabel = MakeSettingRow(settingsPanel.transform, font, "LOOK SENSITIVITY", y,
             () => { GameSettings.LookMultiplier -= 0.1f; GameSettings.Save(); ApplyAndLabel(); },
             () => { GameSettings.LookMultiplier += 0.1f; GameSettings.Save(); ApplyAndLabel(); });
@@ -198,6 +200,19 @@ public class PauseMenuUI : MonoBehaviour
             () => { GameSettings.SfxVolume += 0.1f; GameSettings.Save(); ApplyAndLabel(); });
         y -= 38f;
 
+        // 2.0 accessibility row: reduce flashing (level tube flicker + menu title dips).
+        MakeText(settingsPanel.transform, "FlashCaption", "FLASHING", font, 17,
+            new Color(0.62f, 0.68f, 0.64f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(-150f, y), new Vector2(200f, 28f));
+        flashingLabel = MakeText(settingsPanel.transform, "FlashValue", "Normal", font, 18,
+            new Color(0.80f, 0.90f, 0.82f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(20f, y), new Vector2(110f, 28f));
+        MakeButton(settingsPanel.transform, "FlashPrev", "<", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(-46f, y), new Vector2(38f, 30f), font, 20, ToggleFlashing);
+        MakeButton(settingsPanel.transform, "FlashNext", ">", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(86f, y), new Vector2(38f, 30f), font, 20, ToggleFlashing);
+        y -= 38f;
+
         MakeText(settingsPanel.transform, "TierCaption", "GRAPHICS", font, 17,
             new Color(0.62f, 0.68f, 0.64f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
             new Vector2(-150f, y), new Vector2(200f, 28f));
@@ -210,7 +225,9 @@ public class PauseMenuUI : MonoBehaviour
             new Vector2(86f, y), new Vector2(38f, 30f), font, 20, () => CycleTier(1));
 
         MakeButton(settingsPanel.transform, "SettingsBack", "BACK", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            new Vector2(0f, -132f), new Vector2(200f, 38f), font, 20, () => settingsPanel.SetActive(false));
+            new Vector2(-105f, -152f), new Vector2(190f, 38f), font, 20, () => settingsPanel.SetActive(false));
+        MakeButton(settingsPanel.transform, "SettingsReset", "RESET DEFAULTS", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(100f, -152f), new Vector2(190f, 38f), font, 20, () => { GameSettings.ResetToDefaults(); ApplyAndLabel(); });
     }
 
     void BuildCreditsPanel(Font font)
@@ -337,6 +354,13 @@ public class PauseMenuUI : MonoBehaviour
         ApplyAndLabel();
     }
 
+    void ToggleFlashing()
+    {
+        GameSettings.ReduceFlashing = !GameSettings.ReduceFlashing;
+        GameSettings.Save();
+        RefreshLabels();
+    }
+
     void RefreshLabels()
     {
         if (sensitivityLabel != null) sensitivityLabel.text = "x" + GameSettings.LookMultiplier.ToString("F1");
@@ -344,6 +368,7 @@ public class PauseMenuUI : MonoBehaviour
         if (ambientLabel != null) ambientLabel.text = Mathf.RoundToInt(GameSettings.AmbientVolume * 100f) + "%";
         if (sfxLabel != null) sfxLabel.text = Mathf.RoundToInt(GameSettings.SfxVolume * 100f) + "%";
         if (tierLabel != null) tierLabel.text = TierNames[(int)GameSettings.GraphicsTier];
+        if (flashingLabel != null) flashingLabel.text = GameSettings.ReduceFlashing ? "Reduced" : "Normal";
     }
 
     void OnPausePressed()

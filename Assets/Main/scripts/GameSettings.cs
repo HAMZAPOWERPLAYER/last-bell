@@ -15,6 +15,7 @@ public static class GameSettings
     public const string KeyAmbient = "opt_volumeAmbient";
     public const string KeySfx = "opt_volumeSfx";
     public const string KeyTier = "opt_graphicsTier";
+    public const string KeyReduceFlashing = "opt_reduceFlashing";
 
     /// <summary>PART 3's tuned baseline, in degrees per pixel of drag.</summary>
     public const float BaseSensitivity = 0.15f;
@@ -52,6 +53,18 @@ public static class GameSettings
     {
         get { return (Tier)Mathf.Clamp(PlayerPrefs.GetInt(KeyTier, (int)Tier.Medium), 0, 2); }
         set { PlayerPrefs.SetInt(KeyTier, (int)value); }
+    }
+
+    // ---------------------------------------------------------------- accessibility
+
+    /// <summary>
+    /// 2.0 accessibility option: softens the level's fluorescent-tube flicker (no hard dropouts,
+    /// shallower swing) and stops the menu title's hard dips. Off by default.
+    /// </summary>
+    public static bool ReduceFlashing
+    {
+        get { return PlayerPrefs.GetInt(KeyReduceFlashing, 0) == 1; }
+        set { PlayerPrefs.SetInt(KeyReduceFlashing, value ? 1 : 0); }
     }
 
     /// <summary>
@@ -139,6 +152,18 @@ public static class GameSettings
     }
 
     public static void Save() { PlayerPrefs.Save(); }
+
+    /// <summary>Restores every option to its shipped default (2.0 settings screens: RESET).</summary>
+    public static void ResetToDefaults()
+    {
+        PlayerPrefs.DeleteKey(KeySensitivity);
+        PlayerPrefs.DeleteKey(KeyMaster);
+        PlayerPrefs.DeleteKey(KeyAmbient);
+        PlayerPrefs.DeleteKey(KeySfx);
+        PlayerPrefs.DeleteKey(KeyTier);
+        PlayerPrefs.DeleteKey(KeyReduceFlashing);
+        PlayerPrefs.Save();
+    }
 
     /// <summary>Applies everything. Call from a bootstrap or each menu's OnEnable.</summary>
     public static void ApplyAll(AudioMixer mixer, Controller controller)

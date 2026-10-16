@@ -32,7 +32,7 @@ public class MainMenuUI : MonoBehaviour
     Canvas canvas;
     LastBellMenuStyle style;
     GameObject settingsPanel, creditsPanel, licencesPanel;
-    Text sensitivityLabel, masterLabel, ambientLabel, sfxLabel, tierLabel;
+    Text sensitivityLabel, masterLabel, ambientLabel, sfxLabel, tierLabel, flashingLabel;
     AudioSource ambientSource;
 
     static readonly string[] TierNames = { "Low", "Medium", "High" };
@@ -131,12 +131,14 @@ public class MainMenuUI : MonoBehaviour
         style.BuildSubtitle("two floors. three keys. one way out.");
 
         // 2.0 SAVE & CONTINUE: a checkpointed run gets a CONTINUE row on top. Six rows need a
-        // slightly tighter layout so every row stays inside the +/-180 unit safe band.
+        // tighter layout so every tappable rect stays inside the +/-180 unit safe band with no
+        // row-over-row overlap (the old 53/60 pitch let the lower row cover the row above).
         int row = 0;
         if (RunSave.HasSave())
         {
-            style.rowFirstY = 102f;
-            style.rowPitch = 53f;
+            style.rowFirstY = 104f;
+            style.rowPitch = 51f;
+            style.rowHeight = 51f;
             style.AddItem(row++, ContinueLabel(), OnContinue);
             style.AddItem(row++, "NEW RUN", OnPlay);
         }
@@ -177,7 +179,7 @@ public class MainMenuUI : MonoBehaviour
         MakeText(settingsPanel.transform, "Title", "SETTINGS", font, 30,
             new Color(0.80f, 0.86f, 0.80f), new Vector2(0f, 138f), new Vector2(520f, 40f));
 
-        float y = 70f;
+        float y = 78f;
         sensitivityLabel = MakeSettingRow(settingsPanel.transform, font, "LOOK SENSITIVITY", y,
             () => { GameSettings.LookMultiplier -= 0.1f; GameSettings.Save(); ApplyAndLabel(); },
             () => { GameSettings.LookMultiplier += 0.1f; GameSettings.Save(); ApplyAndLabel(); });
@@ -195,6 +197,15 @@ public class MainMenuUI : MonoBehaviour
             () => { GameSettings.SfxVolume += 0.1f; GameSettings.Save(); ApplyAndLabel(); });
         y -= 38f;
 
+        // 2.0 accessibility row: reduce flashing (level tube flicker + menu title dips).
+        MakeText(settingsPanel.transform, "FlashCaption", "FLASHING", font, 17,
+            new Color(0.62f, 0.68f, 0.64f), new Vector2(-150f, y), new Vector2(200f, 28f));
+        flashingLabel = MakeText(settingsPanel.transform, "FlashValue", "Normal", font, 18,
+            new Color(0.80f, 0.90f, 0.82f), new Vector2(20f, y), new Vector2(110f, 28f));
+        MakeButton(settingsPanel.transform, "FlashPrev", "<", new Vector2(-46f, y), new Vector2(38f, 30f), font, 20, ToggleFlashing);
+        MakeButton(settingsPanel.transform, "FlashNext", ">", new Vector2(86f, y), new Vector2(38f, 30f), font, 20, ToggleFlashing);
+        y -= 38f;
+
         MakeText(settingsPanel.transform, "TierCaption", "GRAPHICS", font, 17,
             new Color(0.62f, 0.68f, 0.64f), new Vector2(-150f, y), new Vector2(200f, 28f));
         tierLabel = MakeText(settingsPanel.transform, "TierValue", "Medium", font, 18,
@@ -202,8 +213,10 @@ public class MainMenuUI : MonoBehaviour
         MakeButton(settingsPanel.transform, "TierPrev", "<", new Vector2(-46f, y), new Vector2(38f, 30f), font, 20, () => CycleTier(-1));
         MakeButton(settingsPanel.transform, "TierNext", ">", new Vector2(86f, y), new Vector2(38f, 30f), font, 20, () => CycleTier(1));
 
-        MakeButton(settingsPanel.transform, "SettingsBack", "BACK", new Vector2(0f, -132f), new Vector2(200f, 38f), font, 20,
+        MakeButton(settingsPanel.transform, "SettingsBack", "BACK", new Vector2(-105f, -152f), new Vector2(190f, 38f), font, 20,
             () => settingsPanel.SetActive(false));
+        MakeButton(settingsPanel.transform, "SettingsReset", "RESET DEFAULTS", new Vector2(100f, -152f), new Vector2(190f, 38f), font, 20,
+            () => { GameSettings.ResetToDefaults(); ApplyAndLabel(); });
     }
 
     void BuildCreditsPanel(Font font)
@@ -363,6 +376,13 @@ public class MainMenuUI : MonoBehaviour
         ApplyAndLabel();
     }
 
+    void ToggleFlashing()
+    {
+        GameSettings.ReduceFlashing = !GameSettings.ReduceFlashing;
+        GameSettings.Save();
+        RefreshLabels();
+    }
+
     void RefreshLabels()
     {
         if (sensitivityLabel != null) sensitivityLabel.text = "x" + GameSettings.LookMultiplier.ToString("F1");
@@ -370,6 +390,7 @@ public class MainMenuUI : MonoBehaviour
         if (ambientLabel != null) ambientLabel.text = Mathf.RoundToInt(GameSettings.AmbientVolume * 100f) + "%";
         if (sfxLabel != null) sfxLabel.text = Mathf.RoundToInt(GameSettings.SfxVolume * 100f) + "%";
         if (tierLabel != null) tierLabel.text = TierNames[(int)GameSettings.GraphicsTier];
+        if (flashingLabel != null) flashingLabel.text = GameSettings.ReduceFlashing ? "Reduced" : "Normal";
     }
 
     void OnPlay()

@@ -126,7 +126,7 @@ opens a full-screen viewer; a tap anywhere closes it.
 |---|---|---|
 | 1st | Classroom Key | Entity **awakens**. Objective becomes “unlock the classroom wing”. |
 | 2nd | Stairwell Key | Objective becomes “unlock the upper corridor”. |
-| 3rd | Main Gate Key | **Escape act begins**: a **30-second** countdown starts and the HUD switches to `RUN! N s`. |
+| 3rd | Main Gate Key | **Escape act begins**: a **30-second** countdown starts and the HUD switches to `RUN! Ns`. |
 
 Two physical doors (`ProgressionGate`) gate progress: the classroom-wing gate requires 1 key,
 the upper-corridor gate requires 2. Walking into a gate shows `UNLOCK <GATE>` on the pick button;
@@ -199,7 +199,7 @@ while you are both near and in view, and decays when you break line of sight.
 | Look | **Touch-drag anywhere on the right half of the screen.** Not a joystick — drag delta drives the camera. |
 | Flashlight | On-screen button — plays a click SFX. |
 | Interact / pick up | On-screen button, appears when in range of a key, page or gate. |
-| Pause | HUD button (top-left) or the **Android back button**. |
+| Pause | HUD button (top-right) or the **Android back button**. |
 | Skip cinematic | On-screen **SKIP** button, `Escape`, or `Space` (editor). |
 
 **Look sensitivity** baseline is `0.15° per pixel of drag`. Adjustable in Settings from ×0.4 to ×2.0.
@@ -383,13 +383,15 @@ later must be credited there.
 | Look sensitivity | ×0.4 – ×2.0 around the 0.15°/px baseline |
 | Master / Ambient / SFX volume | 0–100 % |
 | Graphics | Low / Medium / High |
+| Reduce flashing | Normal / Reduced — softens the level's tube flicker and stops the menu title dips |
+| Restore defaults | RESET DEFAULTS button on both settings screens |
 
 **Graphics tiers** — this is the low-end safety net:
 
 | Tier | Per-pixel lights | Shadows | Shadow distance |
 |---|---|---|---|
-| **Low** | **1** | **Hard only** | 15 |
-| Medium | 4 | Soft, medium res | 30 |
+| **Low** | **1** | **Disabled** | **10** |
+| Medium | 2 | Hard only (low res) | 18 |
 | High | 4 | Soft, medium res | 30 |
 
 All settings persist via `PlayerPrefs` and are applied at startup by `GameSettings`.
@@ -460,12 +462,12 @@ C:\MOBILE\                          (Unity project root = repository root)
 3. Open `Assets/Main/Scenes/Menu.unity` to start from the menu, or `MainLevel.unity` to jump
    straight into gameplay. Press Play.
 
-> **Note — local-only package references.** `Packages/manifest.json` contains two `file:`
-> dependencies that point at development-tool locations on this machine
-> (`com.coplaydev.unity-mcp` → `C:/unity-mcp-main/MCPForUnity`) plus the embedded
-> `com.bezi.sidekick` dev-assistant package. Both are editor tooling, not game code; see
-> [Troubleshooting](#13-troubleshooting--faq) before using a machine that lacks them, and
-> before any cloud build.
+> **Note — local-only package references.** `Packages/manifest.json` contains one `file:`
+> dependency that points at a development-tool location on this machine
+> (`com.coplaydev.unity-mcp` → `C:/unity-mcp-main/MCPForUnity`), and `Packages/` also carries
+> the embedded `com.bezi.sidekick` dev-assistant package. Both are editor tooling, not game
+> code; see [Troubleshooting](#13-troubleshooting--faq) before using a machine that lacks
+> them, and before any cloud build.
 
 ### Diagnostics
 
@@ -544,9 +546,9 @@ The intended pipeline is documented end-to-end in [CLOUD_BUILD.md](CLOUD_BUILD.m
 | `ANDROID_KEYSTORE_BASE64` | base64 of `lastbell.keystore` |
 | `ANDROID_KEYSTORE_PASS`, `ANDROID_KEYALIAS` (`lastbell`), `ANDROID_KEYALIAS_PASS` | Signing |
 
-> **Before wiring CI:** remove or neutralize the two local `file:` packages in
-> `Packages/manifest.json` (`com.coplaydev.unity-mcp` points at an absolute
-> `C:/…` path that no runner has; `com.bezi.sidekick` is an embedded editor tool).
+> **Before wiring CI:** remove or neutralize the local package references:
+> `com.coplaydev.unity-mcp` is a `file:` entry pointing at an absolute `C:/…` path no runner
+> has, and `com.bezi.sidekick` is an embedded editor tool living in `Packages/`.
 > CI otherwise fails at package resolution. See [Troubleshooting](#13-troubleshooting--faq).
 
 ### Play Store release checklist
@@ -554,7 +556,7 @@ The intended pipeline is documented end-to-end in [CLOUD_BUILD.md](CLOUD_BUILD.m
 - [ ] Version code incremented.
 - [ ] Release AAB built, `jarsigner` verified, hash recorded.
 - [ ] Symbols zip archived for crash symbolication.
-- [ ] **App icon assigned in Player Settings** (currently pending — see Roadmap).
+- [x] **App icon assigned in Player Settings** (6 slots, 2.0 — visual check on a device still pending).
 - [ ] Store listing / screenshots refreshed (see `Screenshots/`).
 - [ ] On-device acceptance pass (§12) on a physical device.
 
@@ -678,15 +680,16 @@ base menu canvas and is not reachable from the shipped UI.
   differs.
 - **Settings panel layout code is duplicated** between `MainMenuUI` and `PauseMenuUI`. Behaviour
   is single-sourced in `GameSettings`; only the widget construction repeats.
-- **App icon not yet assigned** — `Assets/Main/UI/Art/LastBellAppIcon.jpg` is imported but the
-  Android icon slots in Player Settings are still empty; the current AAB carries Unity default
-  icons.
+- **App icon**: `Assets/Main/UI/Art/LastBellAppIcon.jpg` is assigned to all 6 Android icon
+  slots as of 2.0 (read/write enabled + uncompressed). The previously shipped AABs still carry
+  the Unity default icons; the next build picks the real one up. Adaptive-icon variants are not
+  authored (the launcher masks the square source).
 - **The base project's original menu canvas** still exists in the `Menu` scene but is disabled at
   runtime, so its `MenuAction` scripts keep running without drawing.
 - Several Floor 2 surfaces remain untextured (flat colour) — bricks cover the walls, wood covers
   furniture and floor.
-- **Local `file:` package references** in `Packages/manifest.json` (MCP bridge + embedded Bezi
-  Sidekick) must be removed before cloud builds — see §13.
+- **Local package references** (the MCP bridge `file:` entry + the embedded Bezi Sidekick
+  folder) must be removed before cloud builds — see §13.
 
 ---
 
@@ -695,14 +698,14 @@ base menu canvas and is not reachable from the shipped UI.
 | Priority | Item |
 |---|---|
 | P0 | Complete the first **end-to-end on-device run** (spawn → 3 keys → gates → escape → ending). |
-| P0 | Assign the **app icon** in Player Settings and rebuild the AAB. |
+| P0 | Rebuild the **signed 2.0 AAB** (app icon now assigned; verify the INTERNET permission is gone — see `RELEASE_CHECKLIST.md`). |
 | P1 | Neutralize local `file:` packages and commit the **CI workflow** (`.github/workflows/android.yml` per CLOUD_BUILD.md). |
 | P1 | Delete legacy `StandaloneInputModule` from the 5 scenes to silence the EventSystem warning. |
 | P2 | **Optional:** resume spawn points — remember roughly where the player was instead of the level start. |
 | P2 | Texturing pass for remaining Floor 2 flat-colour surfaces. |
 | P2 | Optional: enable flashlight battery drain once battery pickups (`Addbattery`) are placed. |
 | P3 | De-duplicate settings-panel construction between the two menu UIs. |
-| P3 | Accessibility pass (text scaling, reduced flicker option). |
+| P3 | Accessibility pass — **reduced-flashing option shipped in 2.0**; text scaling still open. |
 
 ---
 

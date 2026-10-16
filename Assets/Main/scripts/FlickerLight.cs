@@ -41,6 +41,15 @@ public class FlickerLight : MonoBehaviour
 
     void Update()
     {
+        // 2.0 accessibility: when the player asked for reduced flashing, keep a slow shallow
+        // drift and skip the hard dropouts entirely.
+        if (GameSettings.ReduceFlashing)
+        {
+            float calm = Mathf.PerlinNoise(Time.time * (flickerSpeed * 0.35f) + seed, seed);
+            target.intensity = baseIntensity * (1f - 0.25f * flickerAmount * (1f - calm));
+            return;
+        }
+
         float noise = Mathf.PerlinNoise(Time.time * flickerSpeed + seed, seed);
         float intensity = baseIntensity * (1f - flickerAmount * (1f - noise));
 
