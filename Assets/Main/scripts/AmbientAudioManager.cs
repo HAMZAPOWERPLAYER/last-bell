@@ -56,8 +56,8 @@ public class AmbientAudioManager : MonoBehaviour
             {
                 AudioClip clip = ambientClips[Random.Range(0, ambientClips.Length)];
                 if (clip == null) { yield return new WaitForSeconds(5f); continue; }
-                _audio.volume = Random.Range(minVolume, maxVolume);
-                _audio.PlayOneShot(clip);
+                float cueVolume = Random.Range(minVolume, maxVolume);
+                _audio.PlayOneShot(clip, cueVolume);
                 yield return new WaitForSeconds(clip.length + Random.Range(minInterval, maxInterval));
             }
             else

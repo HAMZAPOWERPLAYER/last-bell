@@ -32,11 +32,16 @@ namespace NeKoRoSYS.InputHandling.Mobile
         private void OnDisable() => ForceStopTouch();
         private void Update()
         {
-            if (!EnhancedTouchSupport.enabled) return;
-            if (Touch.activeTouches.Count == 0) return;
-            if (availableTouchIds.Count <= touchLimit) GetTouch();
             delta = Vector2.zero;
-            if (availableTouchIds.Count == 0) return;
+            if (!EnhancedTouchSupport.enabled || Touch.activeTouches.Count == 0)
+            {
+                availableTouchIds.Clear();
+                currentPos = Vector2.zero;
+                lastPos = Vector2.zero;
+                OnTouchDrag?.Invoke(delta);
+                return;
+            }
+            GetTouch();
             foreach (var touch in Touch.activeTouches)
             { if (availableTouchIds.Contains(touch.touchId)) ProcessInput(touch); }
             OnTouchDrag?.Invoke(delta);
@@ -48,7 +53,7 @@ namespace NeKoRoSYS.InputHandling.Mobile
             {
                 var touching = touch.phase is TouchPhase.Began;
                 var notTouching = touch.phase is TouchPhase.Ended or TouchPhase.Canceled or TouchPhase.None;
-                if (IsTouchingPad(touch) && touching) availableTouchIds.Add(touch.touchId);
+                if (IsTouchingPad(touch) && touching && availableTouchIds.Count < touchLimit) availableTouchIds.Add(touch.touchId);
                 else if (notTouching) availableTouchIds.Remove(touch.touchId);
             }
         }

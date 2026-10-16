@@ -4,6 +4,9 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.OnScreen;
+using UnityEngine.InputSystem.EnhancedTouch;
+using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
+using TouchPhase = UnityEngine.InputSystem.TouchPhase;
 using System;
 
 namespace NeKoRoSYS.InputHandling.Mobile
@@ -79,6 +82,90 @@ namespace NeKoRoSYS.InputHandling.Mobile
         private Vector2 fixedPosition;
         private Canvas canvas;
         private Camera cam;
+        private int enhancedTouchId = -1;
+
+        private void Awake() => EnsureEnhancedTouch();
+        protected override void OnEnable()
+        {
+            base.OnEnable();
+            EnsureEnhancedTouch();
+        }
+
+        private static void EnsureEnhancedTouch()
+        {
+            if (!EnhancedTouchSupport.enabled) EnhancedTouchSupport.Enable();
+        }
+
+        private void Update()
+        {
+            if (PauseManager.Instance != null && PauseManager.Instance.IsPaused)
+            {
+                if (touched || input != Vector2.zero || fullInput) ForceStopTouch();
+                return;
+            }
+            if (!EnhancedTouchSupport.enabled || inputArea == null) return;
+
+            var activeTouches = Touch.activeTouches;
+            if (enhancedTouchId < 0)
+            {
+                for (int i = 0; i < activeTouches.Count; i++)
+                {
+                    var touch = activeTouches[i];
+                    if (touch.phase != TouchPhase.Began ||
+                        !RectTransformUtility.RectangleContainsScreenPoint(inputArea, touch.screenPosition, GetCanvasCamera()))
+                        continue;
+
+                    enhancedTouchId = touch.touchId;
+                    touched = true;
+                    touchId = touch.touchId;
+                    PositionFloatingStick(touch.screenPosition);
+                    break;
+                }
+            }
+
+            if (enhancedTouchId < 0) return;
+
+            for (int i = 0; i < activeTouches.Count; i++)
+            {
+                var touch = activeTouches[i];
+                if (touch.touchId != enhancedTouchId) continue;
+                if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled || touch.phase == TouchPhase.None)
+                {
+                    enhancedTouchId = -1;
+                    ForceStopTouch();
+                    return;
+                }
+
+                ApplyTouchPosition(touch.screenPosition);
+                return;
+            }
+
+            enhancedTouchId = -1;
+            ForceStopTouch();
+        }
+
+        private Camera GetCanvasCamera()
+        {
+            if (canvas == null) canvas = GetComponentInParent<Canvas>();
+            return canvas != null && canvas.renderMode == RenderMode.ScreenSpaceCamera ? canvas.worldCamera : null;
+        }
+
+        private void PositionFloatingStick(Vector2 screenPosition)
+        {
+            if (stickMode == StickMode.Fixed || stickBounds == null || canvas == null) return;
+            bool inside = RectTransformUtility.ScreenPointToLocalPointInRectangle(inputArea, screenPosition, GetCanvasCamera(), out Vector2 localPoint);
+            stickBounds.anchoredPosition = inside ? localPoint - (stickBounds.anchorMax * inputArea.sizeDelta) + inputArea.pivot * inputArea.sizeDelta : Vector2.zero;
+            stickBounds.gameObject.SetActive(true);
+        }
+
+        private void ApplyTouchPosition(Vector2 screenPosition)
+        {
+            if (canvas == null || stickBounds == null) return;
+            cam = GetCanvasCamera();
+            Vector2 radius = stickBounds.sizeDelta / 2f;
+            RawInput = (screenPosition - RectTransformUtility.WorldToScreenPoint(cam, stickBounds.position)) / (radius * canvas.scaleFactor);
+            ProcessInput(input.magnitude, input.normalized, radius);
+        }
 
         private void Start() => FormatControlStick();
 
@@ -144,6 +231,7 @@ namespace NeKoRoSYS.InputHandling.Mobile
         {
             if (eventData.pointerId != touchId) return;
             touched = false;
+            if (eventData.pointerId == enhancedTouchId) enhancedTouchId = -1;
             if (StickMode != StickMode.Fixed) stickBounds.gameObject.SetActive(false);
             FullInput = false;
             input = Vector2.zero;
@@ -156,12 +244,16 @@ namespace NeKoRoSYS.InputHandling.Mobile
 
         public void ForceStopTouch()
         {
+            enhancedTouchId = -1;
             touched = false;
             touchId = 0;
             FullInput = false;
-            stickHandle.transform.position = Vector2.zero;
+            rawInput = Vector2.zero;
             input = Vector2.zero;
-            stickBounds.gameObject.SetActive(!(stickMode != StickMode.Fixed));
+            if (stickHandle != null) stickHandle.anchoredPosition = Vector2.zero;
+            if (stickBounds != null) stickBounds.gameObject.SetActive(stickMode == StickMode.Fixed);
+            OnStickDrag?.Invoke(Vector2.zero);
+            SendValueToControl(Vector2.zero);
         }
     }
 }

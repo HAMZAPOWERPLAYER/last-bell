@@ -34,6 +34,7 @@ public class StairsAmbience : MonoBehaviour
     float currentMultiplier = 1f;
     float lastStingTime = -999f;
     int occupants;
+    float lastAppliedMultiplier = -1f;
 
     void Awake()
     {
@@ -70,6 +71,30 @@ public class StairsAmbience : MonoBehaviour
 
         float step = fadeTime > 0f ? Time.deltaTime / fadeTime : 1f;
         currentMultiplier = Mathf.MoveTowards(currentMultiplier, targetMultiplier, step);
-        ambientSource.volume = baseVolume * currentMultiplier;
+        if (Mathf.Abs(currentMultiplier - lastAppliedMultiplier) < 0.0025f) return;
+        lastAppliedMultiplier = currentMultiplier;
+        AudioVolumeController volumeController = AudioVolumeController.Instance;
+        if (volumeController != null)
+            volumeController.SetSourceMultiplier(ambientSource, this, currentMultiplier);
+        else
+            ambientSource.volume = baseVolume * currentMultiplier;
+    }
+
+    void OnEnable()
+    {
+        // A disable clears the controller's multiplier, so the "value unchanged" short-circuit in
+        // Update must be re-armed or the duck would never be re-applied after re-entering.
+        lastAppliedMultiplier = -1f;
+    }
+
+    void OnDisable()
+    {
+        lastAppliedMultiplier = -1f;
+        if (ambientSource == null) return;
+        AudioVolumeController volumeController = AudioVolumeController.Instance;
+        if (volumeController != null)
+            volumeController.ClearSourceMultiplier(ambientSource, this);
+        else if (baseVolume >= 0f)
+            ambientSource.volume = baseVolume;
     }
 }

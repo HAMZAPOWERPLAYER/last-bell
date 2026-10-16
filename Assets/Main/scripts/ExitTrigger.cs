@@ -1,64 +1,125 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem.EnhancedTouch;
+using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
+using TouchPhase = UnityEngine.InputSystem.TouchPhase;
 using UnityEngine.SceneManagement;
 
+/// <summary>Shows the main exit prompt when the player reaches the door with all three keys.</summary>
 public class ExitTrigger : MonoBehaviour
 {
-  //gm
-	private GameObject  _gm;
-	public GameObject openDoor_UI;
-	
-	//Door / exit audio. Unassigned by default so behaviour is unchanged until clips are supplied.
-	public AudioSource door_source;
-	public AudioClip door_clip;
-	[Tooltip("Seconds to wait before loading the next scene, so the door sound can finish. 0 = load immediately.")]
-	public float doorSoundDelay = 0f;
-    // Start is called before the first frame update
+    GameManager gameManager;
+    public GameObject openDoor_UI;
+    public AudioSource door_source;
+    public AudioClip door_clip;
+    [Tooltip("Seconds to wait before loading the next scene, so the door sound can finish. 0 = load immediately.")]
+    public float doorSoundDelay = 0f;
+
+    readonly HashSet<Collider> playerColliders = new HashSet<Collider>();
+    bool playerInside;
+    bool isLoadingNextScene;
+    float lastTapTime = -999f;
+    float tapCooldown = 1f;
+
     void Start()
     {
-		_gm = GameObject.FindGameObjectWithTag("GameManager");
-        
+        if (!EnhancedTouchSupport.enabled) EnhancedTouchSupport.Enable();
+        GameObject managerObject = GameObject.FindGameObjectWithTag("GameManager");
+        if (managerObject != null) gameManager = managerObject.GetComponent<GameManager>();
+        RefreshExitPrompt();
     }
 
-    // Update is called once per frame
+    void OnEnable()
+    {
+        if (!EnhancedTouchSupport.enabled) EnhancedTouchSupport.Enable();
+    }
+
     void Update()
     {
-        
+        if (playerInside) RefreshExitPrompt();
+
+        // Direct touch: if the open door button is visible and player taps, trigger GameWin.
+        if (playerInside && openDoor_UI != null && openDoor_UI.activeSelf && gameManager != null && gameManager.keysfound >= 3)
+        {
+            if (EnhancedTouchSupport.enabled)
+            {
+                var touches = Touch.activeTouches;
+                for (int i = 0; i < touches.Count; i++)
+                {
+                    if (touches[i].phase == TouchPhase.Began && Time.time - lastTapTime >= tapCooldown)
+                    {
+                        lastTapTime = Time.time;
+                        Diag.Log("ExitTrigger: direct touch GameWin");
+                        GameWin();
+                        break;
+                    }
+                }
+            }
+            // Editor/desktop fallback only. On device Input.GetMouseButtonDown(0) is an alias
+            // for the first touch, so this duplicated the EnhancedTouch path above.
+            if (!Application.isMobilePlatform && Input.GetMouseButtonDown(0) && Time.time - lastTapTime >= tapCooldown)
+            {
+                lastTapTime = Time.time;
+                Diag.Log("ExitTrigger: direct click GameWin");
+                GameWin();
+            }
+        }
     }
-	public void OnTriggerEnter(Collider col){
-		if(col.gameObject.tag == "Player"){
-			if(_gm.GetComponent<GameManager>().keysfound == 3){
-				openDoor_UI.SetActive(true);
-			}
-		}
-	}
-	public void OnTriggerExit(Collider col){
-		if(col.gameObject.tag == "Player"){
-			openDoor_UI.SetActive(false);
-		}
-	}
-	public void GameWin(){
-		// Door audio hook. There is no swinging-door mechanic in the project - the only "door"
-		// interaction is this exit transition - so the sound plays on the transition itself.
-		// While door_clip is null this behaves exactly as before.
-		if(door_clip != null){
-			if(door_source != null){
-				door_source.clip = door_clip;
-				door_source.Play();
-			}else{
-				AudioSource.PlayClipAtPoint(door_clip, transform.position);
-			}
-			if(doorSoundDelay > 0f){
-				StartCoroutine(LoadNextSceneAfterDelay());
-				return;
-			}
-		}
-		SceneManager.LoadScene("Bedroom");
-	}
-	
-	IEnumerator LoadNextSceneAfterDelay(){
-		yield return new WaitForSeconds(doorSoundDelay);
-		SceneManager.LoadScene("Bedroom");
-	}
+
+    void OnTriggerEnter(Collider other)
+    {
+        if (!other.CompareTag("Player") || !playerColliders.Add(other)) return;
+        playerInside = playerColliders.Count > 0;
+        RefreshExitPrompt();
+    }
+
+    void OnTriggerExit(Collider other)
+    {
+        if (!other.CompareTag("Player") || !playerColliders.Remove(other)) return;
+        playerInside = playerColliders.Count > 0;
+        if (!playerInside && openDoor_UI != null && openDoor_UI.activeSelf)
+            openDoor_UI.SetActive(false);
+    }
+
+    void RefreshExitPrompt()
+    {
+        if (openDoor_UI == null) return;
+        bool shouldShow = playerInside && gameManager != null && gameManager.keysfound >= 3;
+        if (openDoor_UI.activeSelf != shouldShow) openDoor_UI.SetActive(shouldShow);
+    }
+
+    /// <summary>Opens the main entrance after the player collects all required keys.</summary>
+    public void GameWin()
+    {
+        if (isLoadingNextScene) return;
+        if (gameManager == null || gameManager.keysfound < 3)
+        {
+            if (gameManager != null) gameManager.ShowInteractionMessage("The entrance still needs all 3 keys.", 2f);
+            return;
+        }
+
+        isLoadingNextScene = true;
+        if (door_clip != null)
+        {
+            if (door_source != null)
+                door_source.PlayOneShot(door_clip);
+            else
+                AudioSource.PlayClipAtPoint(door_clip, transform.position);
+
+            if (doorSoundDelay > 0f)
+            {
+                StartCoroutine(LoadNextSceneAfterDelay());
+                return;
+            }
+        }
+
+        SceneManager.LoadScene("Bedroom");
+    }
+
+    IEnumerator LoadNextSceneAfterDelay()
+    {
+        yield return new WaitForSeconds(doorSoundDelay);
+        SceneManager.LoadScene("Bedroom");
+    }
 }

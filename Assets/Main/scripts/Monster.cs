@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 
 public class Monster : MonoBehaviour
 {
-	private GameObject  gm;
+	private GameManager gameManager;
 	
 	public GameObject player;
 	public Transform player_transform;
@@ -57,16 +57,58 @@ public class Monster : MonoBehaviour
 	public float dangerCeiling = 10f;
 	[Tooltip("Danger value that kills the player. Time to die = lifeDuration * (threshold / ceiling): 7 * (6.9/10) = 4.83s reaction window.")]
 	public float dangerDeathThreshold = 6.9f;
+	float baseDistancePlayer;
+	float baseTeleportInterval;
+	float baseFacePlayerFactor;
+	int threatKeyCount;
+	bool escapeThreatActive;
+	bool initialized;
+	bool deathTriggered;
+	float nextViewCheckTime;
+	[Min(0.05f)] public float viewCheckInterval = 0.12f;
 	
-    // Start is called before the first frame update
+	void Awake()
+	{
+		baseDistancePlayer = distancePlayer;
+		baseTeleportInterval = teleportInterval;
+		baseFacePlayerFactor = facePlayerfactor;
+	}
+
+	// Start is called before the first frame update
     void Start()
     {
-		gm = GameObject.FindGameObjectWithTag("GameManager");
+        GameObject managerObject = GameObject.FindGameObjectWithTag("GameManager");
+        gameManager = managerObject != null ? managerObject.GetComponent<GameManager>() : null;
         nextTeleport = spawnRate;
+        initialized = true;
+        ApplyThreatProgress();
     }
-	void goToSafePlace(){
+
+    /// <summary>Escalates monster pursuit as keys are collected and during the final escape.</summary>
+    public void SetThreatProgress(int keysFound, bool escapeActive)
+    {
+        threatKeyCount = Mathf.Clamp(keysFound, 0, 3);
+        escapeThreatActive = escapeActive;
+        if (initialized) ApplyThreatProgress();
+    }
+
+    void ApplyThreatProgress()
+    {
+        int stage = threatKeyCount;
+        float escalation = Mathf.Max(0, stage - 1);
+        distancePlayer = baseDistancePlayer + escalation * 2.5f + (escapeThreatActive ? 3f : 0f);
+        facePlayerfactor = baseFacePlayerFactor * (1f + stage * 0.10f + (escapeThreatActive ? 0.2f : 0f));
+        teleportInterval = Mathf.Max(3.5f, baseTeleportInterval - escalation * 2f - (escapeThreatActive ? 2f : 0f));
+        if (stage > 0)
+            nextTeleport = Mathf.Min(nextTeleport, Time.time + teleportInterval);
+    }
+    void goToSafePlace(){
+        if(safePlace == null) return;
 		transform.position = safePlace.position;
-		nextTeleport += spawnRate;
+		// BUGFIX: this added spawnRate (the one-off *initial* delay, 80s) instead of
+		// teleportInterval, so retreating to the safe place silenced the teleport schedule for
+		// far longer than any authored interval.
+		nextTeleport = Time.time + teleportInterval;
 		isSafePlaceavailable = false;
 	}
 	IEnumerator SafePlaceTimer()
@@ -77,8 +119,7 @@ public class Monster : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-		if(gm == null) return;
-		if(gm.GetComponent<GameManager>().keysfound > 0){
+		if(gameManager == null || gameManager.keysfound <= 0 || player_transform == null) return;
 		if(isSafePlaceavailable && !isOnFlashLightTrigger && !onDanger){
 			goToSafePlace();
 		}
@@ -87,18 +128,16 @@ public class Monster : MonoBehaviour
         currentTime = Time.time;
 		
 		RaycastHit hit;
-		 if (Physics.Raycast(transform.position, transform.TransformDirection(Vector3.forward), out hit, Mathf.Infinity))
-        {
-            //Debug.DrawRay(transform.position, transform.TransformDirection(Vector3.forward) * hit.distance, Color.yellow);
-            if(hit.transform.gameObject.tag == "Player"){
-				inView = true;
-			}
-			else inView = false;
-        }
+		if(currentTime >= nextViewCheckTime){
+			nextViewCheckTime = currentTime + Mathf.Max(0.05f, viewCheckInterval);
+			float viewDistance = Mathf.Max(distancePlayer + 4f, 8f);
+			inView = Physics.Raycast(transform.position, transform.forward, out hit, viewDistance,
+				Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) && hit.transform.CompareTag("Player");
+		}
 		
 
 		
-		spawnOrigin.Set(cube_transform.position.x,cube_transform.position.y,cube_transform.position.z);
+		spawnOrigin = cube_transform != null ? cube_transform.position : player_transform.position;
 		
 		if( !(nearPlayer || inView)){
 			if(currentTime > nextTeleport){
@@ -107,15 +146,7 @@ public class Monster : MonoBehaviour
 			}
 		}
 		
-		if(Vector3.Distance(transform.position, player_transform.position) <= distancePlayer){
-			nearPlayer = true;
-			//if(!GetComponent<AudioSource>().isPlaying && inView){
-			//	GetComponent<AudioSource>().Play();
-			//}
-		}else{
-			nearPlayer = false;
-		}
-		}
+		nearPlayer = (transform.position - player_transform.position).sqrMagnitude <= distancePlayer * distancePlayer;
     }
 	/// <summary>
 	/// Picks a random destination around the player and moves there, preferring spots the player
@@ -192,8 +223,14 @@ public class Monster : MonoBehaviour
 	}
 
 	void FacePlayer(){
-		Vector3 diretion = (player_transform.position - transform.position).normalized;
-		Quaternion lookRotation = Quaternion.LookRotation( new Vector3(diretion.x,0,diretion.z));
+		if(player_transform == null) return;
+		// Flatten first, then guard: if the player is directly above/below the monster the
+		// flattened vector is zero and Quaternion.LookRotation logs "Look rotation viewing
+		// vector is zero" every frame.
+		Vector3 direction = player_transform.position - transform.position;
+		direction.y = 0f;
+		if(direction.sqrMagnitude < 0.0001f) return;
+		Quaternion lookRotation = Quaternion.LookRotation(direction.normalized);
 		transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, Time.deltaTime * facePlayerfactor);
 	}
 	void Damage(){
@@ -220,14 +257,13 @@ public class Monster : MonoBehaviour
 				pointInTime_Damage -= Time.deltaTime;
 			}
 		}
-		if(pointInTime_Damage > lifeDuration){
-			Cursor.lockState = CursorLockMode.None;
-			SceneManager.LoadScene("GameOver");
-			
-		}
-		if(danger >= dangerDeathThreshold){
-			Cursor.lockState = CursorLockMode.None;
-			SceneManager.LoadScene("GameOver");
+		if(pointInTime_Damage > lifeDuration || danger >= dangerDeathThreshold){
+			if(!deathTriggered){
+				deathTriggered = true;
+				Cursor.lockState = CursorLockMode.None;
+				SceneManager.LoadScene("GameOver");
+			}
+			return;
 		}
 		alpha = 0;
 		if(danger/lifeDuration > 0.5 && onDanger){
@@ -239,8 +275,10 @@ public class Monster : MonoBehaviour
 		else if(!onDanger){
 			alpha = danger/lifeDuration;
 		}		
-		deathscreen.color = Color.red;
-		deathscreen.canvasRenderer.SetAlpha(alpha);
+		if(deathscreen != null){
+			deathscreen.color = Color.red;
+			deathscreen.canvasRenderer.SetAlpha(alpha);
+		}
 		
 	}
 }

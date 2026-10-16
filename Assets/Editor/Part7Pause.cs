@@ -16,7 +16,7 @@ public static class Part7Pause
     public static void Setup()
     {
         var scene = SceneManager.GetActiveScene();
-        var existing = Object.FindObjectOfType<PauseManager>();
+        var existing = Object.FindObjectOfType<PauseManager>(true);
         if (existing != null)
         {
             Debug.Log("[PART7 PAUSE] PauseManager already present in " + scene.name + " (on " + existing.gameObject.name + ")");
@@ -28,7 +28,7 @@ public static class Part7Pause
             Debug.Log("[PART7 PAUSE] created PauseManager in " + scene.name);
         }
 
-        if (Object.FindObjectOfType<AudioVolumeController>() == null)
+        if (Object.FindObjectOfType<AudioVolumeController>(true) == null)
         {
             new GameObject("AudioVolume").AddComponent<AudioVolumeController>();
             Debug.Log("[PART7] created AudioVolume (mixer-free volume control)");

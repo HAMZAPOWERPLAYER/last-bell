@@ -93,7 +93,7 @@ public class MainMenuUI : MonoBehaviour
         ambientSource.loop = true;
         ambientSource.playOnAwake = false;
         ambientSource.spatialBlend = 0f;
-        ambientSource.volume = Mathf.Clamp01(menuAmbientVolume * GameSettings.MasterVolume * GameSettings.AmbientVolume);
+        ambientSource.volume = Mathf.Clamp01(menuAmbientVolume * GameSettings.AmbientVolume);
         ambientSource.Play();
     }
 
@@ -335,7 +335,7 @@ public class MainMenuUI : MonoBehaviour
         GameSettings.ApplyGraphicsTier();
         GameSettings.ApplyVolumes();
         if (ambientSource != null)
-            ambientSource.volume = Mathf.Clamp01(menuAmbientVolume * GameSettings.MasterVolume * GameSettings.AmbientVolume);
+            ambientSource.volume = Mathf.Clamp01(menuAmbientVolume * GameSettings.AmbientVolume);
         RefreshLabels();
     }
 
@@ -360,6 +360,10 @@ public class MainMenuUI : MonoBehaviour
 
     void OnPlay()
     {
+        // Starting a new game is the explicit point at which run progress must be cleared. Relying
+        // on the Menu scene's own load to reset it meant any other route into MainLevel (editor
+        // Play, a direct scene load) resumed the previous session's key count.
+        GameManager.StartNewRun();
         GameSettings.Save();
         SceneManager.LoadScene("MainLevel");
     }

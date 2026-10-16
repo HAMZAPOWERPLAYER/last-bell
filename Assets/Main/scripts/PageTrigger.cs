@@ -1,33 +1,39 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>Connects an optional story-page pickup to the manager and its clue text.</summary>
 public class PageTrigger : MonoBehaviour
 {
-  //gm
-	private GameObject  _gm;
-    // Start is called before the first frame update
+    public int clueIndex;
+    [TextArea] public string storyClue;
+
+    GameManager gameManager;
+    readonly HashSet<Collider> playerColliders = new HashSet<Collider>();
+
     void Start()
     {
-		_gm = GameObject.FindGameObjectWithTag("GameManager");
-        
+        GameObject managerObject = GameObject.FindGameObjectWithTag("GameManager");
+        if (managerObject != null) gameManager = managerObject.GetComponent<GameManager>();
     }
 
-    // Update is called once per frame
-    void Update()
+    void OnTriggerEnter(Collider other)
     {
-        
+        if (!other.CompareTag("Player") || gameManager == null || !playerColliders.Add(other)) return;
+        gameManager.isOnPageTrigger_ = true;
+        gameManager.currentPage = gameObject;
     }
-	public void OnTriggerEnter(Collider col){
-		if(col.gameObject.tag == "Player"){
-			_gm.GetComponent<GameManager>().isOnPageTrigger_ = true;
-			_gm.GetComponent<GameManager>().currentPage = this.gameObject;
-		}
-	}
-	public void OnTriggerExit(Collider col){
-		if(col.gameObject.tag == "Player"){
-			_gm.GetComponent<GameManager>().isOnPageTrigger_ = false;
-			_gm.GetComponent<GameManager>().currentPage = null;
-		}
-	}
+
+    void OnTriggerExit(Collider other)
+    {
+        if (!other.CompareTag("Player") || !playerColliders.Remove(other) || playerColliders.Count > 0 || gameManager == null) return;
+        if (gameManager.currentPage == gameObject) gameManager.currentPage = null;
+        gameManager.isOnPageTrigger_ = gameManager.currentPage != null;
+    }
+
+    /// <summary>Assigns the lore fragment before this page enters play.</summary>
+    public void Configure(int index, string clue)
+    {
+        clueIndex = Mathf.Max(0, index);
+        storyClue = clue;
+    }
 }

@@ -90,11 +90,13 @@ public static class Floor1Pass
         int removed = 0;
         foreach (var t in Object.FindObjectsOfType<Transform>(true))
         {
-            if (t != null && t.name.StartsWith("FL1_"))
-            {
-                Object.DestroyImmediate(t.gameObject);
-                removed++;
-            }
+            if (t == null || !t.name.StartsWith("FL1_")) continue;
+            // FL1_AmbientAudio is NOT a regenerated fixture: this pass asks the user to assign ambient
+            // clips to it, so destroying it here would wipe those assignments - and the
+            // StairsAmbience.ambientSource references wired by Floor2Pass - on every re-run.
+            if (t.name == "FL1_AmbientAudio" || t.GetComponent<AmbientAudioManager>() != null) continue;
+            Object.DestroyImmediate(t.gameObject);
+            removed++;
         }
         log.AppendLine("  removed " + removed + " previously generated fixture(s)");
 

@@ -22,6 +22,7 @@ using UnityEngine.UI;
 /// </summary>
 public static class Part9MenuStyle
 {
+    const string ArtFolder = "Assets/Main/UI/Art";
     const string ArtPath = "Assets/Main/UI/Art/MenuBackdrop_Corridor.png";
 
     // ================================================================== device resolutions
@@ -122,23 +123,38 @@ public static class Part9MenuStyle
         var cam = FindGameCamera();
         if (cam == null) { Debug.LogError("[PART9 MENU] no enabled camera found."); return; }
 
+        // "Assets/Main/UI" does not exist in every checkout and AssetDatabase.CreateFolder does not
+        // create intermediate folders (it throws DirectoryNotFoundException), so build the chain first
+        // and bail out with a log instead of throwing out of this menu action.
+        if (!EnsureFolder(ArtFolder))
+        {
+            Debug.LogError("[PART9 MENU] " + ArtFolder + " is unavailable - backdrop not captured.");
+            return;
+        }
+
         const int w = 960, h = 540;
         var rt = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.ARGB32);
         var prevTarget = cam.targetTexture;
-        cam.targetTexture = rt;
-        cam.Render();
-        RenderTexture.active = rt;
+        var prevActive = RenderTexture.active;
+        Texture2D tex;
+        try
+        {
+            cam.targetTexture = rt;
+            cam.Render();
+            RenderTexture.active = rt;
 
-        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
-        tex.ReadPixels(new Rect(0f, 0f, w, h), 0, 0);
-        tex.Apply();
-
-        cam.targetTexture = prevTarget;
-        RenderTexture.active = null;
-        RenderTexture.ReleaseTemporary(rt);
-
-        if (!AssetDatabase.IsValidFolder("Assets/Main/UI/Art"))
-            AssetDatabase.CreateFolder("Assets/Main/UI", "Art");
+            tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            tex.ReadPixels(new Rect(0f, 0f, w, h), 0, 0);
+            tex.Apply();
+        }
+        finally
+        {
+            // Always hand the temporary RT back and restore the camera / active render target the
+            // caller had: the old code leaked the RT and cleared the active target if readback threw.
+            cam.targetTexture = prevTarget;
+            RenderTexture.active = prevActive;
+            RenderTexture.ReleaseTemporary(rt);
+        }
 
         var full = System.IO.Path.GetFullPath(ArtPath);
         System.IO.File.WriteAllBytes(full, tex.EncodeToPNG());
@@ -180,6 +196,32 @@ public static class Part9MenuStyle
             if (any[i] != null && any[i].enabled) return any[i];
         }
         return null;
+    }
+
+    /// <summary>
+    /// Creates every missing segment of an AssetDatabase folder path ("Assets/Main/UI/Art" included).
+    /// AssetDatabase.CreateFolder does not create intermediate folders and throws when the parent is
+    /// missing, so failure is reported by returning false: the caller logs it and bails out instead
+    /// of letting a DirectoryNotFoundException escape the menu action.
+    /// </summary>
+    static bool EnsureFolder(string folder)
+    {
+        try
+        {
+            if (AssetDatabase.IsValidFolder(folder)) return true;
+            int slash = folder.LastIndexOf('/');
+            if (slash <= 0) { Debug.LogError("[PART9 MENU] invalid asset folder path: " + folder); return false; }
+            string parent = folder.Substring(0, slash);
+            string leaf = folder.Substring(slash + 1);
+            if (!EnsureFolder(parent)) return false;
+            AssetDatabase.CreateFolder(parent, leaf);
+            return AssetDatabase.IsValidFolder(folder);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("[PART9 MENU] could not create " + folder + ": " + e.GetType().Name + ": " + e.Message);
+            return false;
+        }
     }
 
     static void ConfigureSpriteImporter()

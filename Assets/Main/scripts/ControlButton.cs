@@ -3,6 +3,9 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.OnScreen;
+using UnityEngine.InputSystem.EnhancedTouch;
+using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
+using TouchPhase = UnityEngine.InputSystem.TouchPhase;
 using System.Collections.Generic;
 using System.Collections;
 using System;
@@ -26,7 +29,7 @@ namespace NeKoRoSYS.InputHandling.Mobile
         private Vector2 startPos;
         public bool touched = false;
         public int touchId, touchAmount;
-        private readonly float maxTapInterval = 15f;
+        private const float DoubleTapResetDelaySeconds = 0.25f;
         [Space]
         [Header("Events")]
         public Action<bool> OnButtonAction;
@@ -34,6 +37,10 @@ namespace NeKoRoSYS.InputHandling.Mobile
         private GraphicRaycaster raycaster;
         private Coroutine colorRoutine;
         private bool visualsCaptured;
+
+        // Direct EnhancedTouch handling - bypasses EventSystem entirely
+        private int enhancedTouchId = -1;
+        private RectTransform selfRect;
 
         internal void ResetTapAmount()
         {
@@ -49,6 +56,7 @@ namespace NeKoRoSYS.InputHandling.Mobile
 
         public void OnPointerDown(PointerEventData eventData)
         {
+            Diag.Log("ControlButton.OnPointerDown on " + gameObject.name);
             if (touched) return;
             touched = true;
             touchId = eventData.pointerId;
@@ -73,13 +81,85 @@ namespace NeKoRoSYS.InputHandling.Mobile
             visualsCaptured = true;
         }
 
+        private void Awake()
+        {
+            if (!EnhancedTouchSupport.enabled) EnhancedTouchSupport.Enable();
+            selfRect = GetComponent<RectTransform>();
+        }
+
+        // BUGFIX: this was `private void OnEnable()`, which HID OnScreenControl.OnEnable (CS0114)
+        // instead of overriding it. OnDisable below does call base.OnDisable(), so the pairing was
+        // broken in a way that mattered: base.OnEnable is what runs SetupInputControl() - creating
+        // the synthetic control that SendValueToControl feeds - and increments s_nbActiveInstances,
+        // which base.OnDisable then decremented. The control path was therefore dead and the
+        // OnScreenControl.HasAnyActive count drifted negative. ControlStick already overrides
+        // correctly; this now matches it.
+        protected override void OnEnable()
+        {
+            base.OnEnable();
+            if (!EnhancedTouchSupport.enabled) EnhancedTouchSupport.Enable();
+        }
+
+        private void Update()
+        {
+            if (!EnhancedTouchSupport.enabled || selfRect == null) return;
+
+            var activeTouches = Touch.activeTouches;
+            if (activeTouches.Count == 0)
+            {
+                if (enhancedTouchId >= 0)
+                {
+                    enhancedTouchId = -1;
+                    touched = false;
+                    ProcessInput(false);
+                }
+                return;
+            }
+
+            if (enhancedTouchId < 0)
+            {
+                for (int i = 0; i < activeTouches.Count; i++)
+                {
+                    var touch = activeTouches[i];
+                    if (touch.phase != TouchPhase.Began) continue;
+                    if (!RectTransformUtility.RectangleContainsScreenPoint(selfRect, touch.screenPosition)) continue;
+                    enhancedTouchId = touch.touchId;
+                    touched = true;
+                    touchId = touch.touchId;
+                    Diag.Log("ControlButton EnhancedTouch DOWN on " + gameObject.name);
+                    ProcessInput(true);
+                    break;
+                }
+            }
+
+            if (enhancedTouchId < 0) return;
+
+            for (int i = 0; i < activeTouches.Count; i++)
+            {
+                var touch = activeTouches[i];
+                if (touch.touchId != enhancedTouchId) continue;
+                if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled || touch.phase == TouchPhase.None)
+                {
+                    enhancedTouchId = -1;
+                    touched = false;
+                    Diag.Log("ControlButton EnhancedTouch UP on " + gameObject.name);
+                    ProcessInput(false);
+                }
+                return;
+            }
+
+            enhancedTouchId = -1;
+            touched = false;
+            ProcessInput(false);
+        }
+
         public void ProcessInput(bool pressed)
         {
             if (pressed)
             {
                 CheckDoubleTap();
                 CancelInvoke(nameof(ResetTapAmount));
-                Invoke(nameof(ResetTapAmount), maxTapInterval * Time.deltaTime);
+                Invoke(nameof(ResetTapAmount), DoubleTapResetDelaySeconds);
             }
             OnButtonAction?.Invoke(pressed);
             SendValueToControl(pressed ? 1.0f : 0.0f);
@@ -106,7 +186,6 @@ namespace NeKoRoSYS.InputHandling.Mobile
                 icon.color = targetColor;
                 return;
             }
-            // Replaces the upstream DOTween tween so the project needs no DOTween dependency.
             if (colorRoutine != null) StopCoroutine(colorRoutine);
             colorRoutine = StartCoroutine(FadeIconColor(targetColor, 0.15f));
         }
@@ -145,13 +224,12 @@ namespace NeKoRoSYS.InputHandling.Mobile
         {
             touched = false;
             touchId = 0;
+            enhancedTouchId = -1;
             if (colorRoutine != null)
             {
                 StopCoroutine(colorRoutine);
                 colorRoutine = null;
             }
-            // OnDisable runs before Start() on objects that load inactive, so only restore
-            // the captured visuals once they have actually been captured.
             if (visualsCaptured && icon != null)
             {
                 icon.sprite = releasedIcon;

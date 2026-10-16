@@ -323,6 +323,20 @@ public static class Floor2Textures
         {
             Bounds b = r.bounds;
             if (Mathf.Abs(b.center.y - floor2Bottom) > 1.0f) continue;
+
+            // Elevation alone is NOT a Floor-1/Floor-2 discriminator: Classroom_2_1's bottom has
+            // reported first-floor level, which is how "First Floor/Floor" got the Floor 2 material.
+            // Never touch a slab that is named/parented under Floor 1 or that still uses a Floor 1
+            // material (same exclusion as the wood-furniture loop above).
+            bool sharedWithFloor1 = false;
+            foreach (var sm in r.sharedMaterials)
+                if (sm != null && floor1Mats.Contains(sm)) { sharedWithFloor1 = true; break; }
+            if (sharedWithFloor1 || PathOf(r.transform).Contains("First Floor"))
+            {
+                log.AppendLine("  ! SKIPPED (Floor 1): " + PathOf(r.transform));
+                continue;
+            }
+
             var mats = r.sharedMaterials;
             for (int i = 0; i < mats.Length; i++) mats[i] = floorMat;
             r.sharedMaterials = mats;

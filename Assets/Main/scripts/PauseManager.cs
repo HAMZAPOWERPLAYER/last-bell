@@ -26,6 +26,9 @@ public class PauseManager : MonoBehaviour
     [Tooltip("Master volume applied when resuming, so a ducked pause does not leave audio quiet.")]
     public bool manageListenerPause = true;
 
+    // Frame on which the pause menu spent the Back/Escape press on one of its own panels.
+    int backButtonConsumedFrame = -1;
+
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -35,7 +38,24 @@ public class PauseManager : MonoBehaviour
     void Update()
     {
         // Android maps the hardware back button to Escape.
-        if (Input.GetKeyDown(KeyCode.Escape)) Toggle();
+        // The pause menu's Settings/Credits panels listen for the same key. When one of them
+        // closes on Back it claims the press here, so Back steps out of the panel instead of
+        // doing that AND unpausing in the same frame. Comparing frame counts rather than
+        // ordering makes this independent of Unity's (undefined) script execution order.
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            if (backButtonConsumedFrame == Time.frameCount) return;
+            Toggle();
+        }
+    }
+
+    /// <summary>
+    /// Claims this frame's Back/Escape press so a pause-menu panel can close without the press
+    /// also reaching <see cref="Toggle"/>.
+    /// </summary>
+    public void ConsumeBackButton()
+    {
+        backButtonConsumedFrame = Time.frameCount;
     }
 
     public void Toggle() { SetPaused(!IsPaused); }
@@ -45,6 +65,7 @@ public class PauseManager : MonoBehaviour
     {
         if (IsPaused == paused) return;
         IsPaused = paused;
+        ResetPlayerInput();
 
         Time.timeScale = paused ? 0f : 1f;
         if (manageListenerPause) AudioListener.pause = paused;
@@ -56,6 +77,15 @@ public class PauseManager : MonoBehaviour
 
         var handler = PauseChanged;
         if (handler != null) handler(paused);
+    }
+
+    static void ResetPlayerInput()
+    {
+        var controllers = Object.FindObjectsOfType<Controller>(true);
+        for (int i = 0; i < controllers.Length; i++)
+        {
+            if (controllers[i] != null) controllers[i].ResetTouchInput();
+        }
     }
 
     /// <summary>

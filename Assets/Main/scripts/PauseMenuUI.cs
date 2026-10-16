@@ -68,8 +68,26 @@ public class PauseMenuUI : MonoBehaviour
     void Update()
     {
         if (!Input.GetKeyDown(KeyCode.Escape)) return;
-        if (creditsPanel != null && creditsPanel.activeSelf) { creditsPanel.SetActive(false); return; }
-        if (settingsPanel != null && settingsPanel.activeSelf) { settingsPanel.SetActive(false); }
+        if (creditsPanel != null && creditsPanel.activeSelf)
+        {
+            creditsPanel.SetActive(false);
+            ClaimBackButton();
+            return;
+        }
+        if (settingsPanel != null && settingsPanel.activeSelf)
+        {
+            settingsPanel.SetActive(false);
+            ClaimBackButton();
+        }
+    }
+
+    /// <summary>
+    /// Tells PauseManager this frame's Back press was used to close a panel, so it must not also
+    /// toggle pause. Without this, Back closed Settings and unpaused the game at the same time.
+    /// </summary>
+    static void ClaimBackButton()
+    {
+        if (PauseManager.Instance != null) PauseManager.Instance.ConsumeBackButton();
     }
 
     void OnPauseChanged(bool paused)
@@ -135,9 +153,9 @@ public class PauseMenuUI : MonoBehaviour
         BuildSettingsPanel(font);
         BuildCreditsPanel(font);
 
-        // ---- HUD pause button: top-left, outside the right-half look-pad drag zone ----
+        // ---- HUD pause button: top-right corner ----
         var pauseButton = MakeButton(canvas.transform, "PauseButton", "II",
-            new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(48f, -48f), new Vector2(72f, 72f),
+            new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-48f, -48f), new Vector2(72f, 72f),
             font, 32, OnPausePressed, new Color(0.10f, 0.12f, 0.11f, 0.85f));
         pauseButtonGroup = pauseButton.gameObject.AddComponent<CanvasGroup>();
         pauseButtonGroup.alpha = 1f;

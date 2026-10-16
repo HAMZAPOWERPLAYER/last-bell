@@ -21,12 +21,17 @@ public class Flashlight : MonoBehaviour
 	[Header("Battery drain")]
 	[Tooltip("Seconds of light the battery holds when drain is enabled (the 'battery' field above is the same value used as 100%).")]
 	public bool batteryDrainEnabled = false;
+	int lastDisplayedBatteryPercent = -1;
+	bool batteryDisplayInitialized;
+	bool lastDisplayedDrainEnabled;
 	
     // Start is called before the first frame update
     void Start()
     {
         starttime = Time.time;
 		timeOfBatteryLeft = ((starttime + battery) - Time.time);
+		if(f_Light == null)
+			Debug.LogError("[Flashlight] No Light assigned to f_Light; the flashlight cannot be switched on.", this);
 		if(flashlightButton != null){
 			flashlightButton.OnButtonAction += (pressed) => {
 				if(pressed) on_Off();
@@ -47,6 +52,8 @@ public class Flashlight : MonoBehaviour
     }
 	
 	void FlashControl(){
+		// BUGFIX: f_Light was dereferenced every frame with no null check.
+		if(f_Light == null) return;
 		if(isFlashlightOn && timeOfBatteryLeft > 0){
 			f_Light.intensity = 7;
 		}else{
@@ -65,12 +72,19 @@ public class Flashlight : MonoBehaviour
 	void UpdateBatteryUI(){
 		if(battery_UI == null) return;
 		if(!batteryDrainEnabled){
-			// No drain: a countdown would be a lie, so show an explicit "no limit" marker.
-			battery_UI.text = "Battery: --";
+			if(!batteryDisplayInitialized || lastDisplayedDrainEnabled){
+				battery_UI.text = "Battery: --";
+				batteryDisplayInitialized = true;
+				lastDisplayedDrainEnabled = false;
+			}
 			return;
 		}
 		int percent = Mathf.Clamp(Mathf.RoundToInt((timeOfBatteryLeft / Mathf.Max(1f, battery)) * 100f), 0, 100);
+		if(batteryDisplayInitialized && lastDisplayedDrainEnabled && percent == lastDisplayedBatteryPercent) return;
 		battery_UI.text = "Battery: " + percent + "%";
+		lastDisplayedBatteryPercent = percent;
+		lastDisplayedDrainEnabled = true;
+		batteryDisplayInitialized = true;
 	}
 	public void on_Off(){
 		isFlashlightOn = !isFlashlightOn;

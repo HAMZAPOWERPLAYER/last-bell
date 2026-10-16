@@ -13,21 +13,28 @@ public class MenuAction : MonoBehaviour
     void Start()
     {
 		if(SceneManager.GetActiveScene().name == "Menu"){
-			PlayerPrefs.SetInt("Keys",0);
+			// Launching or returning to the Menu ends the run, so the next MainLevel entry starts
+			// at zero keys. EndRun also persists the reset, which the old bare SetInt did not.
+			GameManager.EndRun();
 		}
+		ApplyMusicState();
     }
 
 	void Update(){
-		if(isMusicOn && music_on != null){
-			music_on.SetActive(true);
-			music_off.SetActive(false);
-			AudioListener.volume = 1;
-		}
-		if(!isMusicOn && music_off != null){
-			music_on.SetActive(false);
-			music_off.SetActive(true);
-			AudioListener.volume = 0;
-		}
+		// BUGFIX: this used to rewrite AudioListener.volume and both icon SetActive calls every
+		// single frame. That fought the settings screen's master-volume slider (with the music
+		// toggle off it pinned the whole game to silence, so the slider looked dead) and did
+		// per-frame work for a value that only changes on a toggle. It now reacts to change only.
+		if(!appliedMusicState.HasValue || appliedMusicState.Value != isMusicOn) ApplyMusicState();
+	}
+
+	bool? appliedMusicState;
+
+	void ApplyMusicState(){
+		appliedMusicState = isMusicOn;
+		if(music_on != null) music_on.SetActive(isMusicOn);
+		if(music_off != null) music_off.SetActive(!isMusicOn);
+		AudioListener.volume = isMusicOn ? GameSettings.MasterVolume : 0f;
 	}
 	public void goToMainMenu(){
 		SceneManager.LoadScene("Menu");
@@ -37,11 +44,13 @@ public class MenuAction : MonoBehaviour
 	}
 	public void revive(){
 		// Ads removed: restart the level fresh instead of showing a rewarded ad.
-		PlayerPrefs.SetInt("Keys",0);
-		PlayerPrefs.Save();
+		GameManager.StartNewRun();
 		SceneManager.LoadScene("MainLevel");
 	}
 	public void goToGame(){
+		// Same semantics as the MainMenuUI PLAY button: this begins a new run, so stale progress
+		// from a previous session must not be inherited.
+		GameManager.StartNewRun();
 		SceneManager.LoadScene("MainLevel");
 	}
 	public void Quit(){
@@ -49,8 +58,9 @@ public class MenuAction : MonoBehaviour
 	}
 	public void ToggleMusic(){
 		isMusicOn =  !isMusicOn;
+		ApplyMusicState();
 	}
 	public void goToPrivacy(){
-		Application.OpenURL("http://onionkeygames.blogspot.com/2020/10/privacy-policy-tom-felton-built-zabel.html");
+		Application.OpenURL("https://onionkeygames.blogspot.com/2020/10/privacy-policy-tom-felton-built-zabel.html");
 	}
 }

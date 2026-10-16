@@ -105,14 +105,24 @@ public static class NekontrollerSetup
             handleImg.raycastTarget = false;
 
             var stickSO = new SerializedObject(stick);
-            stickSO.FindProperty("inputArea").objectReferenceValue = stickRT;
-            stickSO.FindProperty("stickBounds").objectReferenceValue = boundsRT;
-            stickSO.FindProperty("stickHandle").objectReferenceValue = handleRT;
-            stickSO.FindProperty("stickMode").enumValueIndex = 0;   // Fixed
-            stickSO.FindProperty("stickAxis").enumValueIndex = 2;   // Both
-            stickSO.FindProperty("stickRange").floatValue = 0.55f;  // keeps the handle inside the ring
-            stickSO.FindProperty("fullInputThreshold").floatValue = 0.75f;
-            stickSO.FindProperty("moveThreshold").floatValue = 0.17f;
+            // FindProperty returns null for a renamed/removed field; dereferencing it blindly threw
+            // a NullReferenceException and aborted the whole setup, so guard every lookup.
+            var inputAreaProp = Field(stickSO, "inputArea", stick);
+            if (inputAreaProp != null) inputAreaProp.objectReferenceValue = stickRT;
+            var stickBoundsProp = Field(stickSO, "stickBounds", stick);
+            if (stickBoundsProp != null) stickBoundsProp.objectReferenceValue = boundsRT;
+            var stickHandleProp = Field(stickSO, "stickHandle", stick);
+            if (stickHandleProp != null) stickHandleProp.objectReferenceValue = handleRT;
+            var stickModeProp = Field(stickSO, "stickMode", stick);
+            if (stickModeProp != null) stickModeProp.enumValueIndex = 0;            // Fixed
+            var stickAxisProp = Field(stickSO, "stickAxis", stick);
+            if (stickAxisProp != null) stickAxisProp.enumValueIndex = 2;            // Both
+            var stickRangeProp = Field(stickSO, "stickRange", stick);
+            if (stickRangeProp != null) stickRangeProp.floatValue = 0.55f;          // keeps the handle inside the ring
+            var fullInputProp = Field(stickSO, "fullInputThreshold", stick);
+            if (fullInputProp != null) fullInputProp.floatValue = 0.75f;
+            var moveThresholdProp = Field(stickSO, "moveThreshold", stick);
+            if (moveThresholdProp != null) moveThresholdProp.floatValue = 0.17f;
             stickSO.ApplyModifiedPropertiesWithoutUndo();
 
             // Adaptive sizing: keeps the stick the same physical size on any aspect ratio.
@@ -243,11 +253,14 @@ public static class NekontrollerSetup
         if (stick != null)
         {
             var so = new SerializedObject(stick);
-            check("ControlStick.inputArea set", so.FindProperty("inputArea").objectReferenceValue != null);
-            check("ControlStick.stickBounds set", so.FindProperty("stickBounds").objectReferenceValue != null);
-            check("ControlStick.stickHandle set", so.FindProperty("stickHandle").objectReferenceValue != null);
+            var inputAreaCheck = Field(so, "inputArea", stick);
+            var stickBoundsCheck = Field(so, "stickBounds", stick);
+            var stickHandleCheck = Field(so, "stickHandle", stick);
+            check("ControlStick.inputArea set", inputAreaCheck != null && inputAreaCheck.objectReferenceValue != null);
+            check("ControlStick.stickBounds set", stickBoundsCheck != null && stickBoundsCheck.objectReferenceValue != null);
+            check("ControlStick.stickHandle set", stickHandleCheck != null && stickHandleCheck.objectReferenceValue != null);
             check("ControlStick under a Canvas", stick.GetComponentInParent<Canvas>() != null);
-            var b = so.FindProperty("stickBounds").objectReferenceValue as RectTransform;
+            var b = stickBoundsCheck != null ? stickBoundsCheck.objectReferenceValue as RectTransform : null;
             check("StickBounds has raycast image", b != null && b.GetComponent<Image>() != null && b.GetComponent<Image>().raycastTarget);
         }
         if (pad != null)
@@ -312,49 +325,58 @@ public static class NekontrollerSetup
         if (stick != null)
         {
             var so = new SerializedObject(stick);
-            var bounds = so.FindProperty("stickBounds").objectReferenceValue as RectTransform;
+            var boundsProp = Field(so, "stickBounds", stick);
+            var bounds = boundsProp != null ? boundsProp.objectReferenceValue as RectTransform : null;
             check("stickBounds resolved at runtime", bounds != null);
+            if (bounds == null)
+            {
+                // Without the serialized rect there is nothing meaningful to probe; skip the stick
+                // probe (never dereference a null property) and keep the rest of the test running.
+                Debug.LogError("[NeKONTROLLER RT] ControlStick.stickBounds is missing - analog probe skipped.");
+            }
+            else
+            {
+                var ped = new PointerEventData(EventSystem.current);
+                ped.pointerId = 12345;
+                Vector2 origin = RectTransformUtility.WorldToScreenPoint(null, bounds.position);
+                var canvas = stick.GetComponentInParent<Canvas>();
+                float scale = canvas != null ? canvas.scaleFactor : 1f;
+                // ControlStick divides the screen-space drag by (stickBounds.sizeDelta / 2 * canvas.scaleFactor),
+                // so the probe offset must be expressed in that same screen-pixel space.
+                float radiusUnits = bounds.sizeDelta.x * 0.5f;
+                float radiusPixels = radiusUnits * scale;
+                log.AppendLine("    probe: sizeDelta=" + bounds.sizeDelta + " canvasScale=" + scale.ToString("F3")
+                    + " renderMode=" + (canvas != null ? canvas.renderMode.ToString() : "n/a")
+                    + " canvasRect=" + (canvas != null ? ((RectTransform)canvas.transform).rect.size.ToString() : "n/a"));
+                log.AppendLine("    probe: full-deflection radius = " + radiusUnits.ToString("F1") + " units = "
+                    + radiusPixels.ToString("F1") + " screen px");
+                float diaPx = bounds.sizeDelta.x * scale;
+                log.AppendLine("    on-screen stick diameter = " + diaPx.ToString("F0") + " px = "
+                    + (diaPx / Screen.width * 100f).ToString("F1") + "% of screen width, "
+                    + (diaPx / Screen.height * 100f).ToString("F1") + "% of screen height"
+                    + "   (screen " + Screen.width + "x" + Screen.height + ")");
 
-            var ped = new PointerEventData(EventSystem.current);
-            ped.pointerId = 12345;
-            Vector2 origin = RectTransformUtility.WorldToScreenPoint(null, bounds.position);
-            var canvas = stick.GetComponentInParent<Canvas>();
-            float scale = canvas != null ? canvas.scaleFactor : 1f;
-            // ControlStick divides the screen-space drag by (stickBounds.sizeDelta / 2 * canvas.scaleFactor),
-            // so the probe offset must be expressed in that same screen-pixel space.
-            float radiusUnits = bounds.sizeDelta.x * 0.5f;
-            float radiusPixels = radiusUnits * scale;
-            log.AppendLine("    probe: sizeDelta=" + bounds.sizeDelta + " canvasScale=" + scale.ToString("F3")
-                + " renderMode=" + (canvas != null ? canvas.renderMode.ToString() : "n/a")
-                + " canvasRect=" + (canvas != null ? ((RectTransform)canvas.transform).rect.size.ToString() : "n/a"));
-            log.AppendLine("    probe: full-deflection radius = " + radiusUnits.ToString("F1") + " units = "
-                + radiusPixels.ToString("F1") + " screen px");
-            float diaPx = bounds.sizeDelta.x * scale;
-            log.AppendLine("    on-screen stick diameter = " + diaPx.ToString("F0") + " px = "
-                + (diaPx / Screen.width * 100f).ToString("F1") + "% of screen width, "
-                + (diaPx / Screen.height * 100f).ToString("F1") + "% of screen height"
-                + "   (screen " + Screen.width + "x" + Screen.height + ")");
+                ped.position = origin;
+                stick.OnPointerDown(ped);
+                log.AppendLine("    input @ centre          = " + stick.input.magnitude.ToString("F3"));
 
-            ped.position = origin;
-            stick.OnPointerDown(ped);
-            log.AppendLine("    input @ centre          = " + stick.input.magnitude.ToString("F3"));
+                ped.position = origin + new Vector2(radiusPixels * 0.50f, 0f);
+                stick.OnDrag(ped);
+                float half = stick.input.magnitude;
+                log.AppendLine("    input @ 0.50 x radius   = " + half.ToString("F3"));
+                check("half deflection is analog (~0.5, not the old 0.45 step)", half > 0.35f && half < 0.65f);
 
-            ped.position = origin + new Vector2(radiusPixels * 0.50f, 0f);
-            stick.OnDrag(ped);
-            float half = stick.input.magnitude;
-            log.AppendLine("    input @ 0.50 x radius   = " + half.ToString("F3"));
-            check("half deflection is analog (~0.5, not the old 0.45 step)", half > 0.35f && half < 0.65f);
+                ped.position = origin + new Vector2(radiusPixels, 0f);
+                stick.OnDrag(ped);
+                float full = stick.input.magnitude;
+                log.AppendLine("    input @ 1.00 x radius   = " + full.ToString("F3"));
+                check("full deflection reaches ~1.0 (not the old 0.90 step)", full > 0.90f && full <= 1.0001f);
 
-            ped.position = origin + new Vector2(radiusPixels, 0f);
-            stick.OnDrag(ped);
-            float full = stick.input.magnitude;
-            log.AppendLine("    input @ 1.00 x radius   = " + full.ToString("F3"));
-            check("full deflection reaches ~1.0 (not the old 0.90 step)", full > 0.90f && full <= 1.0001f);
+                FullInputProbe(stick, log);
 
-            FullInputProbe(stick, log);
-
-            stick.OnPointerUp(ped);
-            check("release zeroes the stick (no drift)", stick.input == Vector2.zero);
+                stick.OnPointerUp(ped);
+                check("release zeroes the stick (no drift)", stick.input == Vector2.zero);
+            }
         }
 
         // ---- look pad / touch backend --------------------------------------
@@ -436,6 +458,19 @@ public static class NekontrollerSetup
         var threshold = so.FindProperty("fullInputThreshold");
         log.AppendLine("    fullInputThreshold=" + (threshold != null ? threshold.floatValue.ToString("F2") : "n/a")
             + "  FullInput(sprint)=" + stick.FullInput);
+    }
+
+    /// <summary>
+    /// SerializedObject.FindProperty with a guard: a renamed or removed field returns null, so name
+    /// the missing field in the log and let the caller skip it instead of throwing a NullReference.
+    /// </summary>
+    static SerializedProperty Field(SerializedObject so, string name, UnityEngine.Object owner)
+    {
+        var p = so.FindProperty(name);
+        if (p == null)
+            Debug.LogError("[NeKONTROLLER] " + owner.GetType().Name + "." + name
+                + " serialized field not found (renamed or removed?) - skipping it.");
+        return p;
     }
 
     // ---------------------------------------------------------- helpers

@@ -5,8 +5,8 @@ using UnityEngine.Audio;
 /// Offline settings store for PART 7. PlayerPrefs only - no network, no accounts, no analytics.
 ///
 /// Owns: look sensitivity, Master/Ambient/SFX volume, and the graphics tier.
-/// The graphics tiers deliberately map LOW back to the pre-PART-5 safe values
-/// (pixelLightCount 1, hard shadows) as the low-end safety net.
+/// The graphics tiers deliberately map LOW to disabled real-time shadows and one per-pixel light,
+/// with MEDIUM using hard shadows at a shorter distance for mobile devices.
 /// </summary>
 public static class GameSettings
 {
@@ -55,17 +55,17 @@ public static class GameSettings
     }
 
     /// <summary>
-    /// Applies the tier to QualitySettings. Low is the safety net: it restores the
-    /// pre-PART-5 values (1 per-pixel light, hard shadows) for low-end devices.
+    /// Applies the tier to QualitySettings. Low disables shadows for low-end devices;
+    /// Medium uses a short hard-shadow distance to limit mobile shadow-map cost.
     /// </summary>
     public static void ApplyGraphicsTier()
     {
         switch (GraphicsTier)
         {
             case Tier.Low:
-                QualitySettings.shadows = ShadowQuality.HardOnly;
+                QualitySettings.shadows = ShadowQuality.Disable;
                 QualitySettings.shadowResolution = ShadowResolution.Low;
-                QualitySettings.shadowDistance = 15f;
+                QualitySettings.shadowDistance = 10f;
                 QualitySettings.shadowCascades = 0;
                 QualitySettings.pixelLightCount = 1;
                 break;
@@ -76,12 +76,12 @@ public static class GameSettings
                 QualitySettings.shadowCascades = 0;
                 QualitySettings.pixelLightCount = 4;
                 break;
-            default: // Medium - what PART 5 shipped
-                QualitySettings.shadows = ShadowQuality.All;
-                QualitySettings.shadowResolution = ShadowResolution.Medium;
-                QualitySettings.shadowDistance = 30f;
+            default: // Medium - avoid realtime shadow-map passes on the mobile default.
+                QualitySettings.shadows = ShadowQuality.HardOnly;
+                QualitySettings.shadowResolution = ShadowResolution.Low;
+                QualitySettings.shadowDistance = 18f;
                 QualitySettings.shadowCascades = 0;
-                QualitySettings.pixelLightCount = 4;
+                QualitySettings.pixelLightCount = 2;
                 break;
         }
     }
@@ -107,11 +107,12 @@ public static class GameSettings
     }
 
     /// <summary>
-    /// Mixer-free volume application (the approved fallback): hands off to the scene's
-    /// AudioVolumeController, which scales each AudioSource by role and master.
+    /// Mixer-free volume application (the approved fallback): applies master volume through the
+    /// AudioListener and role-specific gains through the scene's AudioVolumeController.
     /// </summary>
     public static void ApplyVolumes()
     {
+        AudioListener.volume = MasterVolume;
         if (AudioVolumeController.Instance != null) AudioVolumeController.Instance.Apply();
     }
 

@@ -1,23 +1,28 @@
-﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>Activates one distant sound cue after a randomized, frame-rate-independent delay.</summary>
 public class randomSounds : MonoBehaviour
 {
-	public GameObject Sounds;
-    // Start is called before the first frame update
+    const float MinimumDelaySeconds = 90f;
+    const float MaximumDelaySeconds = 240f;
+
+    public GameObject Sounds;
+
     void Start()
     {
-        
+        if (Sounds == null)
+        {
+            Debug.LogWarning("[randomSounds] Sound object is not assigned.", this);
+            enabled = false;
+            return;
+        }
+
+        Invoke(nameof(ActivateSound), Random.Range(MinimumDelaySeconds, MaximumDelaySeconds));
     }
 
-    // Update is called once per frame
-    void Update()
+    void ActivateSound()
     {
-        int i = Random.Range(0, 10000);
-		if(i == 5){
-			Sounds.SetActive(true);
-			Destroy(this.gameObject);
-		}
+        if (Sounds != null) Sounds.SetActive(true);
+        Destroy(gameObject);
     }
 }

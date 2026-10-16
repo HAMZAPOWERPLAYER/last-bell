@@ -1,33 +1,43 @@
-﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>Connects a key pickup to the manager and carries its story/progression identity.</summary>
 public class KeyTrigger : MonoBehaviour
 {
-	//gm
-	private GameObject  _gm;
-    // Start is called before the first frame update
+    public int progressionStage;
+    public string keyTitle = "School Key";
+    [TextArea] public string storyClue;
+
+    GameManager gameManager;
+    readonly HashSet<Collider> playerColliders = new HashSet<Collider>();
+
     void Start()
     {
-		_gm = GameObject.FindGameObjectWithTag("GameManager");
-        
+        GameObject managerObject = GameObject.FindGameObjectWithTag("GameManager");
+        if (managerObject != null) gameManager = managerObject.GetComponent<GameManager>();
     }
 
-    // Update is called once per frame
-    void Update()
+    void OnTriggerEnter(Collider other)
     {
-        
+        Diag.Log("KeyTrigger OnTriggerEnter: " + other.name + " tag=" + other.tag);
+        if (!other.CompareTag("Player") || gameManager == null || !playerColliders.Add(other)) return;
+        Diag.Log("KeyTrigger: Player entered, setting currentKey");
+        gameManager.isOnKeyTrigger_ = true;
+        gameManager.currentKey = gameObject;
     }
-	public void OnTriggerEnter(Collider col){
-		if(col.gameObject.tag == "Player"){
-			_gm.GetComponent<GameManager>().isOnKeyTrigger_ = true;
-			_gm.GetComponent<GameManager>().currentKey = this.gameObject;
-		}
-	}
-	public void OnTriggerExit(Collider col){
-		if(col.gameObject.tag == "Player"){
-			_gm.GetComponent<GameManager>().isOnKeyTrigger_ = false;
-			_gm.GetComponent<GameManager>().currentKey = null;
-		}
-	}
+
+    void OnTriggerExit(Collider other)
+    {
+        if (!other.CompareTag("Player") || !playerColliders.Remove(other) || playerColliders.Count > 0 || gameManager == null) return;
+        if (gameManager.currentKey == gameObject) gameManager.currentKey = null;
+        gameManager.isOnKeyTrigger_ = gameManager.currentKey != null;
+    }
+
+    /// <summary>Assigns narrative identity before this spawned key enters play.</summary>
+    public void Configure(int stage, string title, string clue)
+    {
+        progressionStage = Mathf.Clamp(stage, 0, 2);
+        keyTitle = title;
+        storyClue = clue;
+    }
 }
