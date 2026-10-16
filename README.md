@@ -11,7 +11,7 @@ and when the final bell rings, run.
 ![Engine](https://img.shields.io/badge/Engine-Unity%202022.3.62f3%20LTS-000000?logo=unity&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/Pipeline-Built--in%20RP-4B5563)
 ![Backend](https://img.shields.io/badge/Backend-IL2CPP%20%C2%B7%20ARM64-6E4AFF)
-![Version](https://img.shields.io/badge/Version-0.4%20(code%204)-0A66C2)
+![Version](https://img.shields.io/badge/Version-2.0%20(code%2020)-0A66C2)
 ![License](https://img.shields.io/badge/License-CC--BY--4.0%20%2B%20MIT-yellow)
 ![Privacy](https://img.shields.io/badge/Privacy-Fully%20offline-success)
 
@@ -21,8 +21,8 @@ and when the final bell rings, run.
 
 | Field | Value |
 |---|---|
-| **Current release** | `0.4` (bundleVersion) · AndroidBundleVersionCode `4` |
-| **Latest artifact** | `Builds/LastBell-0.4-v4.aab` — 39.0 MB · ARM64 · IL2CPP · `jar verified` |
+| **Current release** | `2.0` (bundleVersion) · AndroidBundleVersionCode `20` |
+| **Latest artifact** | `Builds/LastBell-0.4-v4.aab` — 39.0 MB · ARM64 · IL2CPP · `jar verified` (**2.0 build pending**) |
 | **Artifact SHA-256** | `CA484BC584D52286B62C3DA6B314052741DEECC3F26B98B499796CF159CF6804` |
 | **Repository** | <https://github.com/HAMZAPOWERPLAYER/last-bell> |
 | **Document owner** | HAMZA POWERPLAYER |
@@ -78,6 +78,8 @@ timed escape run back to the main entrance.
   serialized fields, tunable in the scene without code changes.
 - A complete, skippable cinematic layer: opening in-engine cutscene plus distinct ending
   sequences for win and death.
+- Checkpointed **save & continue**: keys, pages, unlocked gates and the run's exact item
+  layout survive death and app restarts; the menu offers `CONTINUE` when a saved run exists.
 - Zero runtime networking, no ads, no analytics — settings and run progress live in
   `PlayerPrefs` only.
 - 39 MB release bundle (AAB) shipped from a reproducible local release procedure with a signed
@@ -94,7 +96,7 @@ timed escape run back to the main entrance.
 | Package ID | `com.hamzapowerplayer.lastbell` |
 | Product name | Last Bell |
 | Company | HAMZA POWERPLAYER |
-| Version | `0.4` (bundleVersion) · AndroidBundleVersionCode `4` |
+| Version | `2.0` (bundleVersion) · AndroidBundleVersionCode `20` |
 | Orientation | Landscape |
 | Active build platform | `Android` — release AAB, **IL2CPP / ARM64** |
 | Min SDK / Target SDK / Compile SDK | 24 / 36 / 36 |
@@ -135,10 +137,13 @@ pressing it with too few keys answers “Need N more key(s)…”.
 - **Win** — reach the main entrance during the escape act → `Bedroom` → `GameWin`.
 - **Death** — if the entity catches you in view for too long, or the **30 s escape timer**
   expires, the game loads `GameOver`.
-- Death does **not** clear your keys; restarting via the `REVIVE` button (`MenuAction.revive()`)
-  starts a fresh run — `PlayerPrefs "Keys"` is reset and `MainLevel` reloads.
-- Pressing Play/REVIVE always **starts a new run**; re-entering `MainLevel` mid-run (e.g. after
-  a reload) keeps what was already collected via the `RunActive` flag.
+- Death does **not** clear your progress. `REVIVE` resumes the **last checkpoint** — same keys,
+  pages, unlocked gates and item layout — and respawns you at the level start.
+- Progress is checkpointed at run start, every key/page pickup and every gate unlock — see
+  [Run-state & persistence model](#run-state--persistence-model). Closing and reopening the
+  game mid-run and choosing `CONTINUE` resumes the same checkpoint; a fresh run starts only
+  via **PLAY / NEW RUN**. Resuming a run that holds all 3 keys starts a fresh 30 s escape
+  countdown.
 
 ### Placement model
 
@@ -150,6 +155,9 @@ and rolls them:
   fallback if a stage has no free point.
 - The remaining spots become **pages** (shuffled), the rest stay empty. A spot can only hold
   one item.
+- The rolled layout is **recorded in the save** as a compact per-spot code (`--` empty, `K0`–
+  `K2` key stage, `P0`–`P5` page index, in spawn order). Resuming replays it exactly, so every
+  uncollected item stays where it was; items already collected are simply absent.
 
 ### The entity — behaviour summary
 
@@ -207,11 +215,12 @@ upstream `Application.Quit()` on Escape was a deliberate behavioural change.)
 
 ```mermaid
 flowchart LR
-    A["Menu"] -->|"PLAY — starts a new run"| B["MainLevel"]
+    A["Menu"] -->|"PLAY / NEW RUN — fresh run"| B["MainLevel"]
+    A -->|"CONTINUE — resume checkpoint"| B
     B -->|"3 keys + reach the main entrance"| C["Bedroom"]
     B -->|"Entity kills you / escape timer expires"| D["GameOver"]
     C -->|"BlackImage animation event: goToGameWin"| E["GameWin"]
-    D -->|"REVIVE"| B
+    D -->|"REVIVE — resume checkpoint"| B
     D -->|"MAIN MENU"| A
     E -->|"MAIN MENU"| A
 ```
@@ -236,7 +245,8 @@ flowchart LR
 | `Monster.cs` | Entity AI: bounded out-of-view teleport, sight ray, danger meter, threat escalation per key, one-shot death → `GameOver`. |
 | `DetectMonster.cs` | Flashlight trigger volume → `isOnFlashLightTrigger`. |
 | `Flashlight.cs` | Light toggle, battery (drain implemented, disabled by default), click SFX. |
-| `GameManager.cs` | Run lifecycle (`StartNewRun` / `BeginOrResumeRun`), staged key/page placement, pickup flow, key HUD, gates, mission objectives, escape sequence + timer. |
+| `GameManager.cs` | Run lifecycle (`StartNewRun` / `ContinueRun` / resume path), staged key/page placement with save-layout replay, pickup flow, key HUD, gates, mission objectives, escape sequence + timer, save checkpoints. |
+| `RunSave.cs` | `PlayerPrefs` save model (2.0): run flag + format version, key count, 6-bit page mask, gate bits and a compact per-spot layout codec; `HasSave` / `Clear` / checkpoint writers. |
 | `ProgressionGate.cs` | Keyed door: interaction prompt, `TryOpen`, animated swing (`openAngle`, `openDuration`). |
 | `KeyTrigger.cs` / `PageTrigger.cs` | World triggers; carry per-stage key titles/clues and page narratives. |
 | `ExitTrigger.cs` | Main-entrance prompt; starts `Bedroom` when 3 keys are held (direct-touch and button paths). |
@@ -250,19 +260,28 @@ flowchart LR
 | `AudioVolumeController.cs` | Master/Ambient/SFX application to every source (no AudioMixer groups required). |
 | `AmbientAudioManager.cs` | Random ambient cue scheduler (creaks / distant sounds, 12–35 s cadence). |
 | `FlickerLight.cs` / `StairsAmbience.cs` / `MobileControlsLayout.cs` | Lighting flicker, stairwell cue ducking, adaptive control sizing. |
-| `MenuAction.cs` | Legacy upstream scene-nav handlers (`goToGame`, `revive`, `goToMainMenu`, `Quit`) still used by the ending scenes' buttons. |
+| `MenuAction.cs` | Legacy upstream scene-nav buttons used by the ending scenes; `revive()` now resumes the checkpoint via `GameManager.ContinueRun()` (falling back to a fresh run when no save exists). |
 | `Diag.cs` | Dev-only tracing via `[Conditional("UNITY_EDITOR")] / [Conditional("DEVELOPMENT_BUILD")]` — zero cost in release players. |
 
 ### Run-state & persistence model
 
 | Key (`PlayerPrefs`) | Meaning |
 |---|---|
-| `Keys` | Keys collected **in the current run** (0–3). Survives scene reloads mid-run only. |
-| `RunActive` | `1` while a run is genuinely in progress. Entering `MainLevel` without it discards stale progress. |
+| `Keys` | Keys collected **in the current run** (0–3). Restored on resume. |
+| `RunActive` | `1` while a run is genuinely in progress — lets `MainLevel` tell a deliberate resume from a stale save. |
+| `Save.State` / `Save.Version` | `1` when a resumable checkpoint exists; save-format version (`1`). |
+| `Save.Keys` / `Save.Pages` | Checkpointed key count and a 6-bit mask of collected pages. |
+| `Save.Gates` | Bitmask of unlocked gates: bit 0 classroom wing, bit 1 upper corridor. |
+| `Save.Layout` | Compact per-spot layout codes (`--`, `K0`–`K2`, `P0`–`P5`) in spawn order. |
 | `opt_lookSensitivity`, `opt_volumeMaster`, `opt_volumeAmbient`, `opt_volumeSfx`, `opt_graphicsTier` | Persistent settings. |
 
-`Menu` scene load calls `GameManager.EndRun()`, so returning to the menu always resets run
-progress. There is no save/continue — see [Known limitations](#15-known-limitations).
+A checkpoint is written at run start, on every key pickup, page pickup and gate unlock — and it
+**survives death**. Both `REVIVE` (GameOver) and `CONTINUE` (menu) reload `MainLevel` and restore
+the checkpoint; the menu additionally shows the progress it will restore (`CONTINUE (n/3 KEYS)`).
+The save is cleared when you **win**, when a **NEW RUN** starts, and by a stale-save guard:
+entering `MainLevel` with no checkpoint, or with one but neither a resume request nor an active
+run flag, discards it and starts fresh. If the saved layout no longer matches the scene's spawn
+spots it is dropped on its own, while keys/pages/gates still resume. See `RunSave.cs`.
 
 ### Audio architecture
 
@@ -328,9 +347,11 @@ avoid light bleed and per-pixel cost. Per-scene `LightingSettings` assets exist 
 
 ## 7. Menus, settings & UX
 
-**Main menu** — PLAY · SETTINGS · CREDITS · LICENCES · QUIT
+**Main menu** — CONTINUE (only while a saved run exists) · PLAY / NEW RUN · SETTINGS · CREDITS · LICENCES · QUIT
 
-There is **no Continue button**: the game has no save system, and Play always starts a fresh run.
+`CONTINUE` appears only when a checkpointed run exists and shows what it will restore, e.g.
+`CONTINUE (2/3 KEYS)`; in that case `PLAY` becomes `NEW RUN` (which clears the save and rolls a
+fresh layout). The six rows are laid out to stay inside the ±180-unit landscape safe band.
 
 **Pause menu** — RESUME · SETTINGS · CREDITS · MAIN MENU · QUIT
 Pausing freezes `Time.timeScale`, mutes audio, stops the entity's coroutines, and blocks player
@@ -407,7 +428,7 @@ C:\MOBILE\                          (Unity project root = repository root)
 │   └── com.coplaydev.unity-mcp     local MCP bridge (absolute path — see §13)
 ├── ProjectSettings/                committed; SDK versions, identity, input handling
 ├── Builds/                         release artifacts + verification records (gitignored)
-├── Screenshots/                    menu/pause screenshots at two device resolutions
+├── Screenshots/                    menu/pause captures at device resolutions + the CONTINUE menu
 ├── CLOUD_BUILD.md                  cloud build guide (game-ci / Unity Build Automation)
 └── README.md                       this document
 ```
@@ -467,6 +488,7 @@ repair scene wiring.
 | `Tools/Part7` | Setup Pause Manager · Setup Audio Mixer · Add Ambient + SFX Groups · Report · Runtime Pause Test · Runtime Pause Channel Test |
 | `Tools/Part8` | Set Package Identity |
 | `Tools/Part9` | Game View Size presets (2340×1080 / 1920×1080 / 1280×720 / 720×1280) · Capture Menu Backdrop · Assign Menu Art In Active Scene · Runtime Menu Animation Test |
+| `Tools/Part10` | Verify Save Round-Trip (edit mode) · Runtime Save Continue Test (while playing — drives real scene reloads through the entire save/continue flow) |
 | `Tools/Audio` | Compress Ambient Bed |
 
 ---
@@ -486,7 +508,7 @@ repair scene wiring.
 
 ### Local release procedure
 
-1. **Bump the version** — `bundleVersion` (`0.4`) and `AndroidBundleVersionCode` (`4`) in
+1. **Bump the version** — `bundleVersion` (`2.0`) and `AndroidBundleVersionCode` (`20`) in
    `ProjectSettings/ProjectSettings.asset`. Increment the code for every upload.
 2. **Build the AAB** from Unity (Build Settings ▸ Build App Bundle ticked), supplying the
    keystore password in Player Settings ▸ Publishing. The password is **never committed**; it
@@ -549,6 +571,8 @@ The intended pipeline is documented end-to-end in [CLOUD_BUILD.md](CLOUD_BUILD.m
 | Pause round-trip | `Tools/Part7 ▸ Runtime Pause Test` |
 | Monster runtime behaviour | `Tools/Floor1 ▸ Runtime Monster Test` |
 | Menu animation while paused | `Tools/Part9 ▸ Runtime Menu Animation Test` |
+| Save round-trip (edit mode) | `Tools/Part10 ▸ Verify Save Round-Trip` |
+| Save/continue runtime flow | `Tools/Part10 ▸ Runtime Save Continue Test` |
 | Level audit (hierarchy, missing refs) | `Tools/Floor1 ▸ Audit`, `Tools/Floor2 ▸ Audit` |
 | Content placement | `Tools/Floor2 ▸ Check Content Placement` |
 
@@ -560,12 +584,16 @@ The intended pipeline is documented end-to-end in [CLOUD_BUILD.md](CLOUD_BUILD.m
 3. **Touch controls work** — left stick moves, right-half drag looks around.
 4. **Pause** via the HUD button and the Android back button; Resume returns cleanly.
 5. **Settings persist** — change the graphics tier, force-close the app, reopen, confirm it stuck.
-6. **Opening cutscene** plays, is skippable, and hands over control without camera drift.
-7. **Full run** — pick up a key (entity activates), unlock both gates, collect 3 keys, survive
+6. **Save & continue** — collect a key or two, force-close the app, reopen: the menu shows
+   `CONTINUE (n/3 KEYS)` and resuming restores the keys, open gates and every remaining item's
+   position. Dying and pressing `REVIVE` restores the same checkpoint; finishing the game clears
+   it (the next launch shows `PLAY`).
+7. **Opening cutscene** plays, is skippable, and hands over control without camera drift.
+8. **Full run** — pick up a key (entity activates), unlock both gates, collect 3 keys, survive
    the 30 s escape run, reach the entrance, watch the ending, return to the menu.
    *Nobody has completed a full run end to end on device yet — this is the outstanding
    verification.*
-8. **Frame rate** on the target device, especially on Floor 2 which has the most realtime lights.
+9. **Frame rate** on the target device, especially on Floor 2 which has the most realtime lights.
 
 ### Performance & budget notes
 
@@ -600,17 +628,21 @@ Pre-existing behaviour: Escape with a sub-panel open closes the panel *and* unpa
 state owns Escape). Use the on-screen **BACK** button to return to the pause list without
 resuming. On the main menu, Escape closes the open panel and stays on the menu.
 
-**Launching directly into `MainLevel` shows stale key progress.**
-Only possible with `RunActive` set by a prior run; `Menu` load ends the run. Use
-`GameManager.StartNewRun()` (as PLAY does) from any custom entry point.
+**Launching directly into `MainLevel` resumes a previous run (or starts fresh unexpectedly).**
+By design: `MainLevel` resumes when a checkpoint exists and either a `CONTINUE`/`REVIVE`
+request or the `RunActive` flag is present; otherwise any stale save is discarded and a fresh
+run begins. Use `GameManager.StartNewRun()` (as the menu's `NEW RUN` does) from custom entry
+points.
 
 **Console spams “Creating missing EventSystem component for InputSystemUIInputModule”.**
 Known cosmetic issue: each scene's EventSystem carries both an Input System and a legacy input
 module. Deleting the legacy `StandaloneInputModule` from the 5 scenes would silence it.
 
 **Where is the save file?**
-There isn't one. Run progress lives in `PlayerPrefs` (`Keys`, `RunActive`) and is intentionally
-cleared when a run ends.
+There isn't a file. The save/continue checkpoint lives in `PlayerPrefs` (`Save.*`: key count,
+collected-page mask, unlocked gates, item layout). It survives death and app restarts, is
+cleared automatically when the run is won or a `NEW RUN` starts, and is deleted with the app's
+data. `Tools/Part10 ▸ Verify Save Round-Trip` prints exactly what is stored.
 
 ---
 
@@ -623,7 +655,7 @@ Last Bell is **fully offline**:
 - No ads, no ad SDKs.
 - No analytics or telemetry.
 - All settings and progress are stored locally on the device via `PlayerPrefs`
-  (`opt_*`, `Keys`, `RunActive`) and deleted with the app's data.
+  (`opt_*`, `Keys`, `RunActive`, `Save.*`) and deleted with the app's data.
 
 **Repository hygiene:** the signing keystore lives outside the repository
 (`C:/MOBILE-Keys/`), and its password is never committed to any tracked file or CI secret in
@@ -635,8 +667,9 @@ base menu canvas and is not reachable from the shipped UI.
 
 ## 15. Known limitations
 
-- **No save/continue system.** Play always starts a fresh run. A Continue button is intentionally
-  absent rather than present-and-broken.
+- **The save is `PlayerPrefs`-only** (no file, no cloud, single slot). Resuming respawns you at
+  the level start rather than where you died, and if the saved layout no longer matches the
+  scene's spawn spots it is dropped while counters alone resume.
 - **URP is not used.** The project runs on the Built-in Render Pipeline. URP was never installed
   and could not be added, so all lighting is Built-in (flicker, realtime fixtures, no
   post-processing).
@@ -665,6 +698,7 @@ base menu canvas and is not reachable from the shipped UI.
 | P0 | Assign the **app icon** in Player Settings and rebuild the AAB. |
 | P1 | Neutralize local `file:` packages and commit the **CI workflow** (`.github/workflows/android.yml` per CLOUD_BUILD.md). |
 | P1 | Delete legacy `StandaloneInputModule` from the 5 scenes to silence the EventSystem warning. |
+| P2 | **Optional:** resume spawn points — remember roughly where the player was instead of the level start. |
 | P2 | Texturing pass for remaining Floor 2 flat-colour surfaces. |
 | P2 | Optional: enable flashlight battery drain once battery pickups (`Addbattery`) are placed. |
 | P3 | De-duplicate settings-panel construction between the two menu UIs. |
@@ -709,7 +743,7 @@ Licences screen, including the cinematic audio beds sourced from the Freesound c
 | | |
 |---|---|
 | Owner | HAMZA POWERPLAYER |
-| Status | Active — pre-release 0.4 |
+| Status | Active — 2.0 (Save & Continue) |
 | Last updated | 2026-10-16 |
 | Review cadence | On every release and whenever scene wiring or build config changes |
 | Sources of truth | This README for architecture/flow; `CLOUD_BUILD.md` for CI; `Builds/aab_verification_*.txt` for artifact provenance |

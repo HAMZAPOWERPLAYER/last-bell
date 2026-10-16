@@ -13,8 +13,11 @@ public class SpawnItem : MonoBehaviour
 		TrySpawnItem(kindofItem);
 	}
 
-	/// <summary>Spawns the requested pickup and updates this spawn point only when successful.</summary>
-	public bool TrySpawnItem(string itemKind, int narrativeIndex = -1){
+	/// <summary>Spawns the requested pickup and updates this spawn point only when successful.
+	/// keyStageOverride keeps a Key on a specific progression stage even when this point's own
+	/// stage differs (used by the saved-layout replay and the no-config fallback); -1 = use this
+	/// point's stage.</summary>
+	public bool TrySpawnItem(string itemKind, int narrativeIndex = -1, int keyStageOverride = -1){
 		GameObject prefab = null;
 		if(itemKind == "Key") prefab = keyprefab;
 		else if(itemKind == "Page") prefab = pageprefab;
@@ -26,7 +29,7 @@ public class SpawnItem : MonoBehaviour
 		if(itemKind == "Key"){
 			KeyTrigger key = spawnedItem.GetComponent<KeyTrigger>();
 			if(key != null){
-				int stage = Mathf.Clamp(progressionStage, 0, 2);
+				int stage = keyStageOverride >= 0 ? Mathf.Clamp(keyStageOverride, 0, 2) : Mathf.Clamp(progressionStage, 0, 2);
 				string[] titles = {"Classroom Key", "Stairwell Key", "Main Gate Key"};
 				string[] clues = {
 					"A classroom label is scratched into the key. The first gate is close.",

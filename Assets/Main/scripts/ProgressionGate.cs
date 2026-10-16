@@ -16,15 +16,42 @@ public class ProgressionGate : MonoBehaviour
     GameManager gameManager;
     readonly HashSet<Collider> playerColliders = new HashSet<Collider>();
     Quaternion closedRotation;
+    bool closedRotationCaptured;
     bool isOpen;
+
+    /// <summary>True once this gate has been unlocked and opened (normal play or a restored save).</summary>
+    public bool IsOpen { get { return isOpen; } }
 
     void Start()
     {
         gameManager = GameObject.FindGameObjectWithTag("GameManager")?.GetComponent<GameManager>();
+        EnsureInitialized();
+        if (doorBlocker != null) doorBlocker.enabled = !isOpen;
+    }
+
+    /// <summary>Resolves the serialized visual/blocker fallbacks and captures the closed rotation
+    /// exactly once, so OpenInstant() is safe even before Start() has run (save restore).</summary>
+    void EnsureInitialized()
+    {
         if (doorVisual == null) doorVisual = transform.parent;
         if (doorBlocker == null && doorVisual != null) doorBlocker = doorVisual.GetComponent<Collider>();
-        if (doorVisual != null) closedRotation = doorVisual.localRotation;
-        if (doorBlocker != null) doorBlocker.enabled = !isOpen;
+        if (doorVisual != null && !closedRotationCaptured)
+        {
+            closedRotation = doorVisual.localRotation;
+            closedRotationCaptured = true;
+        }
+    }
+
+    /// <summary>Opens the gate immediately without the swing animation or the "unlocked" toast;
+    /// used when a saved run is restored and its keys were already spent on this gate.</summary>
+    public void OpenInstant()
+    {
+        if (isOpen) return;
+        EnsureInitialized();
+        isOpen = true;
+        if (doorBlocker != null) doorBlocker.enabled = false;
+        if (doorVisual != null) doorVisual.localRotation = closedRotation * Quaternion.Euler(0f, openAngle, 0f);
+        if (gameManager != null && gameManager.currentGate == this) gameManager.SetCurrentGate(null);
     }
 
     void OnTriggerEnter(Collider other)

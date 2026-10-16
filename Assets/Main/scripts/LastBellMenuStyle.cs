@@ -47,6 +47,12 @@ public class LastBellMenuStyle : MonoBehaviour
     public const int ItemFontSize = 20;
     public const float TitleExtraSpacing = 11f;
 
+    // Row layout. The constants above are the Last Bell defaults; these instance copies let a
+    // menu with more rows (main menu + CONTINUE = 6) tighten the pitch so every row - including
+    // the highlight bar - stays inside the +/-180 unit safe band. Other menus keep the defaults.
+    public float rowFirstY = FirstItemY;
+    public float rowPitch = ItemPitch;
+
     // ------------------------------------------------------------------ tunables
     [Header("Font (leave empty to use the project's built-in font)")]
     public Font displayFont;
@@ -468,7 +474,7 @@ public class LastBellMenuStyle : MonoBehaviour
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0f, 0.5f);                 // left-anchored list
         rt.sizeDelta = new Vector2(ItemWidth, ItemHeight);
-        var rest = new Vector2(LeftMargin, FirstItemY - rowIndex * ItemPitch);
+        var rest = new Vector2(LeftMargin, rowFirstY - rowIndex * rowPitch);
         rt.anchoredPosition = rest;
 
         var hit = go.GetComponent<Image>();

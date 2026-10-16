@@ -12,11 +12,10 @@ public class MenuAction : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-		if(SceneManager.GetActiveScene().name == "Menu"){
-			// Launching or returning to the Menu ends the run, so the next MainLevel entry starts
-			// at zero keys. EndRun also persists the reset, which the old bare SetInt did not.
-			GameManager.EndRun();
-		}
+		// 2.0 SAVE & CONTINUE: the Menu used to call GameManager.EndRun() here, wiping run
+		// progress on arrival. It does not any more - progress now lives in RunSave and is what
+		// the menu's CONTINUE button resumes. It is cleared only by PLAY (a deliberate new run)
+		// or by escaping (ExitTrigger calls EndRun at the winning door).
 		ApplyMusicState();
     }
 
@@ -43,8 +42,9 @@ public class MenuAction : MonoBehaviour
 		SceneManager.LoadScene("GameWin");
 	}
 	public void revive(){
-		// Ads removed: restart the level fresh instead of showing a rewarded ad.
-		GameManager.StartNewRun();
+		// Ads removed: resume from the last checkpoint instead of showing a rewarded ad.
+		// ContinueRun also covers the no-save case by starting a fresh run.
+		GameManager.ContinueRun();
 		SceneManager.LoadScene("MainLevel");
 	}
 	public void goToGame(){

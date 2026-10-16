@@ -67,8 +67,8 @@ public class MainMenuUI : MonoBehaviour
     /// <summary>
     /// The Menu scene still ships the base project's placeholder menu canvas (the MenuAction one).
     /// Leaving it enabled draws two menus on top of each other. Canvas.enabled = false stops the
-    /// rendering while leaving MenuAction's own Update running - it still resets PlayerPrefs "Keys"
-    /// and drives the music toggle - so no existing functionality is lost.
+    /// rendering while leaving MenuAction's own Update running - it still drives the music toggle -
+    /// so no existing functionality is lost.
     /// </summary>
     void HideOtherCanvases()
     {
@@ -129,11 +129,25 @@ public class MainMenuUI : MonoBehaviour
         style.BuildArt(backdropArt);
         style.BuildTitle("LAST BELL");
         style.BuildSubtitle("two floors. three keys. one way out.");
-        style.AddItem(0, "PLAY", OnPlay);
-        style.AddItem(1, "SETTINGS", OpenSettings);
-        style.AddItem(2, "CREDITS", OpenCredits);
-        style.AddItem(3, "LICENCES", OpenLicences);
-        style.AddItem(4, "QUIT", OnQuit);
+
+        // 2.0 SAVE & CONTINUE: a checkpointed run gets a CONTINUE row on top. Six rows need a
+        // slightly tighter layout so every row stays inside the +/-180 unit safe band.
+        int row = 0;
+        if (RunSave.HasSave())
+        {
+            style.rowFirstY = 102f;
+            style.rowPitch = 53f;
+            style.AddItem(row++, ContinueLabel(), OnContinue);
+            style.AddItem(row++, "NEW RUN", OnPlay);
+        }
+        else
+        {
+            style.AddItem(row++, "PLAY", OnPlay);
+        }
+        style.AddItem(row++, "SETTINGS", OpenSettings);
+        style.AddItem(row++, "CREDITS", OpenCredits);
+        style.AddItem(row++, "LICENCES", OpenLicences);
+        style.AddItem(row++, "QUIT", OnQuit);
         style.SettleClosed();
 
         BuildSettingsPanel(font);
@@ -360,10 +374,26 @@ public class MainMenuUI : MonoBehaviour
 
     void OnPlay()
     {
-        // Starting a new game is the explicit point at which run progress must be cleared. Relying
-        // on the Menu scene's own load to reset it meant any other route into MainLevel (editor
-        // Play, a direct scene load) resumed the previous session's key count.
+        // Starting a new game is the explicit point at which run progress must be cleared -
+        // StartNewRun now also deletes the Save & Continue checkpoint. Relying on the Menu
+        // scene's own load to reset it meant any other route into MainLevel (editor Play, a
+        // direct scene load) resumed the previous session's key count.
         GameManager.StartNewRun();
+        GameSettings.Save();
+        SceneManager.LoadScene("MainLevel");
+    }
+
+    /// <summary>CONTINUE shows the checkpointed key count so the player knows where they stand.</summary>
+    static string ContinueLabel()
+    {
+        int keys = RunSave.Keys;
+        return keys > 0 ? "CONTINUE (" + keys + "/3 KEYS)" : "CONTINUE";
+    }
+
+    void OnContinue()
+    {
+        // Resume the checkpointed run. ContinueRun also covers the no-save case by starting fresh.
+        GameManager.ContinueRun();
         GameSettings.Save();
         SceneManager.LoadScene("MainLevel");
     }

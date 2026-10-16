@@ -59,28 +59,50 @@ public class GameManager : MonoBehaviour
 	//Audio from pages
 	
 	// ---- run lifecycle ----
-	// "Keys" is RUN progress, not a permanent save: it exists so re-entering MainLevel mid-run
-	// (revive, scene reload) keeps what was already collected. "RunActive" records whether a run is
-	// genuinely in progress. Before this, the only thing that ever cleared "Keys" was MenuAction
-	// when the Menu scene loaded - so launching straight into MainLevel (pressing Play in the editor
-	// with MainLevel open, or any entry point that skips the Menu) inherited the previous session's
-	// keys: the HUD already showed "1 keys found" and initSpawns() only spawned 2 key pickups.
+	// "Keys" is the LIVE run value the HUD and the spawner read; "RunActive" records whether a run
+	// is genuinely in progress. Since 2.0 the persistent layer is RunSave (Save & Continue): every
+	// mutation below writes both so the two can never drift, and CONTINUE / REVIVE resume from the
+	// checkpoint instead of wiping progress. Before RunSave, "Keys" was the only run storage, and
+	// any entry point that skipped the Menu (editor Play into MainLevel) silently inherited the
+	// previous session's keys: the HUD already showed "1 keys found" and initSpawns() only spawned
+	// 2 key pickups.
 	public const string KeyProgress = "Keys";
 	public const string KeyRunActive = "RunActive";
 
-	/// <summary>Starts a genuinely new run: clears collected keys and marks the run active.</summary>
+	/// <summary>Set by the CONTINUE and REVIVE buttons just before MainLevel loads, so Start()
+	/// knows the entry is a deliberate resume and applies the checkpoint.</summary>
+	public static bool ContinueRequest = false;
+
+	/// <summary>Starts a genuinely new run: clears collected keys, deletes any previous save (a new
+	/// run re-rolls the whole world) and marks the run active.</summary>
 	public static void StartNewRun()
 	{
+		RunSave.Clear();
 		PlayerPrefs.SetInt(KeyProgress, 0);
 		PlayerPrefs.SetInt(KeyRunActive, 1);
 		PlayerPrefs.Save();
 	}
 
-	/// <summary>Ends the run so the next MainLevel entry starts with zero keys.</summary>
+	/// <summary>Ends the run for good (the player escaped, or progress was deliberately dropped):
+	/// clears keys, drops the run-active flag and deletes the Save &amp; Continue checkpoint.</summary>
 	public static void EndRun()
 	{
+		RunSave.Clear();
 		PlayerPrefs.SetInt(KeyProgress, 0);
 		PlayerPrefs.SetInt(KeyRunActive, 0);
+		PlayerPrefs.Save();
+	}
+
+	/// <summary>Resumes the saved run: keeps the checkpoint, marks the run active and asks the next
+	/// MainLevel Start() to apply it. Falls back to a fresh run when there is no save.</summary>
+	public static void ContinueRun()
+	{
+		if(!RunSave.HasSave()){
+			StartNewRun();
+			return;
+		}
+		ContinueRequest = true;
+		PlayerPrefs.SetInt(KeyRunActive, 1);
 		PlayerPrefs.Save();
 	}
 
@@ -100,9 +122,27 @@ public class GameManager : MonoBehaviour
     void Start()
     {
         GameSettings.ApplyGraphicsTier();
-		BeginOrResumeRun();
-		keysfound = Mathf.Clamp(PlayerPrefs.GetInt(KeyProgress, 0), 0, 3);
-		amountOfKeysIngame = keysfound;
+		// 2.0 SAVE & CONTINUE: a deliberate resume (CONTINUE / REVIVE) or a mid-run reload
+		// (RunActive) applies the checkpoint; any other MainLevel entry starts fresh and drops
+		// whatever stale save an earlier session left behind.
+		bool resuming = RunSave.HasSave() && (ContinueRequest || PlayerPrefs.GetInt(KeyRunActive, 0) == 1);
+		ContinueRequest = false;
+		if(resuming){
+			keysfound = RunSave.Keys;
+			amountOfKeysIngame = keysfound;
+			amountOfPagesIngame = RunSave.PagesCollected;   // only uncollected pages are re-spawned
+			currentPageNumber = RunSave.PagesCollected;     // story panels keep their numbering
+			classroomWingUnlocked = (RunSave.GateMask & 1) != 0;
+			upperCorridorUnlocked = (RunSave.GateMask & 2) != 0;
+			PlayerPrefs.SetInt(KeyProgress, keysfound);     // keep the legacy key in sync
+			PlayerPrefs.Save();
+			ApplySavedGateState();
+		}else{
+			BeginOrResumeRun();
+			RunSave.Clear();
+			keysfound = Mathf.Clamp(PlayerPrefs.GetInt(KeyProgress, 0), 0, 3);
+			amountOfKeysIngame = keysfound;
+		}
 		if(keyCounter_txt != null) keyCounter_txt.text = keysfound+" keys found";
 		interactionPromptText = pickUp_UI != null ? pickUp_UI.GetComponentInChildren<Text>(true) : null;
 		missionObjectiveText = GameObject.Find("Intro")?.GetComponent<Text>();
@@ -251,13 +291,27 @@ public class GameManager : MonoBehaviour
         SetMissionObjective(message);
     }
 
-    /// <summary>Records gate unlock progression and updates the next story objective.</summary>
+    /// <summary>Records gate unlock progression, checkpoints it and updates the next story objective.</summary>
     public void OnGateUnlocked(ProgressionGate gate)
     {
         if(gate == null) return;
         if(gate.requiredKeys <= 1) classroomWingUnlocked = true;
         else upperCorridorUnlocked = true;
+        RunSave.RecordGateUnlocked(gate.requiredKeys);   // 2.0 checkpoint
         ShowMissionMessage(gate.gateName.ToUpperInvariant() + " UNLOCKED", 3.5f);
+    }
+
+    /// <summary>Re-opens (instantly) every gate whose keys were already used when a saved run is
+    /// restored; called from Start() on the resume path.</summary>
+    void ApplySavedGateState()
+    {
+        int gateMask = RunSave.GateMask;
+        ProgressionGate[] gates = Object.FindObjectsOfType<ProgressionGate>(true);
+        foreach(ProgressionGate gate in gates){
+            if(gate == null) continue;
+            int bit = gate.requiredKeys <= 1 ? 1 : 2;
+            if((gateMask & bit) != 0) gate.OpenInstant();
+        }
     }
 
     /// <summary>Sets the gate currently inside the player's interaction radius.</summary>
@@ -318,6 +372,38 @@ public class GameManager : MonoBehaviour
             available.Add(spawn);
         }
 
+        // 2.0 SAVE & CONTINUE: spawn points are ordered deterministically (hierarchy path) so a
+        // rolled layout can be replayed exactly when the run resumes. A save whose layout no
+        // longer matches this scene (spawn points changed in the editor since the save) is
+        // discarded: keys and pages still resume from their counters, only the random item
+        // positions are re-rolled.
+        available.Sort(CompareSpawnPoints);
+        string savedLayout = RunSave.Layout;
+        bool replayingLayout = RunSave.HasSave() && RunSave.CoversSpawnCount(savedLayout, available.Count);
+        if(RunSave.HasSave() && savedLayout.Length > 0 && !replayingLayout){
+            Debug.LogWarning("[GameManager] Saved spawn layout covers " + (savedLayout.Length / 2) + " spawn points but the scene has " + available.Count + "; re-rolling the layout.");
+        }
+
+        if(replayingLayout){
+            // Replay: re-spawn exactly the items the save recorded, skipping what was collected.
+            for(int i = 0; i < available.Count; i++){
+                char kind;
+                int value;
+                if(!RunSave.TryReadSpot(savedLayout, i, out kind, out value)) continue;
+                if(kind == 'K'){
+                    if(value < keysfound) continue;                       // key already collected
+                    if(!available[i].TrySpawnItem("Key", -1, value)) return;
+                }else if(kind == 'P'){
+                    if((RunSave.PageMask & (1 << Mathf.Clamp(value, 0, 5))) != 0) continue;   // page already collected
+                    if(!available[i].TrySpawnItem("Page", value)) return;
+                }
+            }
+            return;
+        }
+
+        // Fresh roll: record every choice into the layout buffer and store the finished layout as
+        // the run-start checkpoint the moment the world exists.
+        char[] layout = RunSave.NewLayoutBuffer(available.Count);
         HashSet<SpawnItem> used = new HashSet<SpawnItem>();
         for(int stage = keysfound; stage < 3; stage++){
             if(keysNeeded <= 0) break;
@@ -331,10 +417,11 @@ public class GameManager : MonoBehaviour
                 return;
             }
             SpawnItem keySpawn = stageCandidates[Random.Range(0, stageCandidates.Count)];
-            if(!keySpawn.TrySpawnItem("Key")) return;
+            if(!keySpawn.TrySpawnItem("Key", -1, stage)) return;
             used.Add(keySpawn);
             keysNeeded--;
             amountOfKeysIngame++;
+            RunSave.WriteSpot(layout, available.IndexOf(keySpawn), 'K', stage);
         }
 
         List<SpawnItem> pageCandidates = available.FindAll(point => !used.Contains(point));
@@ -350,8 +437,29 @@ public class GameManager : MonoBehaviour
         }
         for(int i = 0; i < pagesNeeded; i++){
             if(!pageCandidates[i].TrySpawnItem("Page", amountOfPagesIngame)) return;
+            RunSave.WriteSpot(layout, available.IndexOf(pageCandidates[i]), 'P', amountOfPagesIngame);
             amountOfPagesIngame++;
         }
+        RunSave.BeginRun(new string(layout));
+    }
+
+    /// <summary>Deterministic spawn-point order (hierarchy path) so a saved layout replays exactly.</summary>
+    static int CompareSpawnPoints(SpawnItem a, SpawnItem b)
+    {
+        if(a == null || b == null) return 0;
+        return string.CompareOrdinal(SpawnPath(a.transform), SpawnPath(b.transform));
+    }
+
+    /// <summary>Full "Parent/Child" hierarchy path of a spawn point.</summary>
+    static string SpawnPath(Transform pointTransform)
+    {
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(pointTransform.name);
+        Transform parent = pointTransform.parent;
+        while(parent != null){
+            builder.Insert(0, parent.name + "/");
+            parent = parent.parent;
+        }
+        return builder.ToString();
     }
 	void spawnJumpScare(){
 		if(monsterprefab == null){
@@ -398,6 +506,7 @@ public class GameManager : MonoBehaviour
 			currentKey = null;
 			PlayerPrefs.SetInt(KeyProgress, keysfound);
 			PlayerPrefs.Save();
+			RunSave.RecordKeyPickup(keysfound);   // 2.0 checkpoint: death or a restart resumes here
 			Destroy(collectedKey);
 			if(keyCounter_txt != null) keyCounter_txt.text = keysfound+" keys found";
 			PlayPickup(keyPickup_clip);
@@ -414,6 +523,7 @@ public class GameManager : MonoBehaviour
 			isOnPageTrigger_ = false;
 			GameObject collectedPage = currentPage;
 			PageTrigger pageStory = collectedPage.GetComponent<PageTrigger>();
+			RunSave.RecordPagePickup(pageStory != null ? pageStory.clueIndex : -1);   // 2.0 checkpoint
 			currentPage = null;
 			if(collectedPage != null) Destroy(collectedPage);
 			PlayPickup(pagePickup_clip);

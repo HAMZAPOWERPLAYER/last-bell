@@ -100,6 +100,9 @@ public class ExitTrigger : MonoBehaviour
         }
 
         isLoadingNextScene = true;
+        // 2.0 SAVE & CONTINUE: the run is complete the moment the door opens - delete the
+        // checkpoint so the menu offers a clean PLAY instead of resuming an escaped run.
+        GameManager.EndRun();
         if (door_clip != null)
         {
             if (door_source != null)
