@@ -56,6 +56,7 @@ namespace NeKoRoSYS.InputHandling.Mobile
 
         public void OnPointerDown(PointerEventData eventData)
         {
+            if (PauseManager.Instance != null && PauseManager.Instance.IsPaused) return;
             Diag.Log("ControlButton.OnPointerDown on " + gameObject.name);
             if (touched) return;
             touched = true;
@@ -104,6 +105,19 @@ namespace NeKoRoSYS.InputHandling.Mobile
         {
             if (!EnhancedTouchSupport.enabled || selfRect == null) return;
 
+            // While paused, the direct EnhancedTouch path bypasses the EventSystem (and the pause
+            // panel's raycast block), so without this guard the flashlight could be toggled
+            // through the pause overlay. Mirrors ControlStick's pause handling.
+            if (PauseManager.Instance != null && PauseManager.Instance.IsPaused)
+            {
+                if (touched || enhancedTouchId >= 0)
+                {
+                    ForceStopTouch();
+                    ProcessInput(false);
+                }
+                return;
+            }
+
             var activeTouches = Touch.activeTouches;
             if (activeTouches.Count == 0)
             {
@@ -118,6 +132,11 @@ namespace NeKoRoSYS.InputHandling.Mobile
 
             if (enhancedTouchId < 0)
             {
+                // Dedupe: the EventSystem pointer path (OnPointerDown) may already own this press.
+                // Both paths used to fire ProcessInput(true) for one tap, double-invoking
+                // OnButtonAction and the double-tap counter. First path to claim it wins.
+                if (touched) return;
+
                 for (int i = 0; i < activeTouches.Count; i++)
                 {
                     var touch = activeTouches[i];

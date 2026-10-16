@@ -51,6 +51,12 @@ public class Monster : MonoBehaviour
 	public float floorOffset = 2.24f;
 	[Tooltip("Half-angle of the camera's view cone treated as 'in view'. Destinations inside this cone are only accepted if level geometry blocks the line of sight.")]
 	public float viewConeAngle = 60f;
+
+	[Header("State (read-only debug)")]
+	[Tooltip("High-level behaviour state derived from the existing timers each frame. Exposed for debugging and tests; movement is still driven entirely by the timers.")]
+	public BehaviorState state = BehaviorState.Dormant;
+
+	public enum BehaviorState { Dormant, Roaming, Stalking, Attacking, Retreating }
 	
 	[Header("Danger meter")]
 	[Tooltip("Value the danger meter ramps toward while the player is caught in view (was a hardcoded 10).")]
@@ -65,6 +71,7 @@ public class Monster : MonoBehaviour
 	bool initialized;
 	bool deathTriggered;
 	float nextViewCheckTime;
+	float retreatUntil;
 	[Min(0.05f)] public float viewCheckInterval = 0.12f;
 	
 	void Awake()
@@ -104,12 +111,25 @@ public class Monster : MonoBehaviour
     }
     void goToSafePlace(){
         if(safePlace == null) return;
+		// Fairness: the fixed safe spot can be visible from wherever the player is standing -
+		// retreating there used to pop the monster into view (or next to the player). If the spot
+		// is not safely hidden and far enough away, use a validated hidden teleport instead.
+		bool tooClose = player_transform != null &&
+			Vector3.Distance(safePlace.position, player_transform.position) < teleportMinDistance;
+		if(tooClose || !IsHiddenFromPlayer(safePlace.position) || !IsValidDestination(safePlace.position)){
+			TeleportOutOfView();
+			nextTeleport = Time.time + teleportInterval;
+			isSafePlaceavailable = false;
+			retreatUntil = Time.time + 1.2f;
+			return;
+		}
 		transform.position = safePlace.position;
 		// BUGFIX: this added spawnRate (the one-off *initial* delay, 80s) instead of
 		// teleportInterval, so retreating to the safe place silenced the teleport schedule for
 		// far longer than any authored interval.
 		nextTeleport = Time.time + teleportInterval;
 		isSafePlaceavailable = false;
+		retreatUntil = Time.time + 1.2f;
 	}
 	IEnumerator SafePlaceTimer()
     {
@@ -119,7 +139,7 @@ public class Monster : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-		if(gameManager == null || gameManager.keysfound <= 0 || player_transform == null) return;
+		if(gameManager == null || gameManager.keysfound <= 0 || player_transform == null){ state = BehaviorState.Dormant; return; }
 		if(isSafePlaceavailable && !isOnFlashLightTrigger && !onDanger){
 			goToSafePlace();
 		}
@@ -147,6 +167,14 @@ public class Monster : MonoBehaviour
 		}
 		
 		nearPlayer = (transform.position - player_transform.position).sqrMagnitude <= distancePlayer * distancePlayer;
+
+		// Derived behaviour state (debug/testing read-out; behaviour is still driven entirely by
+		// the timers above): Dormant before the first key, Attacking while the danger meter runs,
+		// Retreating briefly after a withdrawal, Stalking when near but unseen, Roaming otherwise.
+		if(onDanger) state = BehaviorState.Attacking;
+		else if(Time.time < retreatUntil) state = BehaviorState.Retreating;
+		else if(nearPlayer && !inView) state = BehaviorState.Stalking;
+		else state = BehaviorState.Roaming;
     }
 	/// <summary>
 	/// Picks a random destination around the player and moves there, preferring spots the player
@@ -177,6 +205,10 @@ public class Monster : MonoBehaviour
 				Vector3.Distance(candidate, player_transform.position) < teleportMinDistance)
 				continue;
 
+			// Fairness/robustness: never land inside geometry, in mid-air, or on a different
+			// floor than the player (doorways and stairwells used to allow all three).
+			if (!IsValidDestination(candidate)) continue;
+
 			if (IsHiddenFromPlayer(candidate))
 			{
 				transform.position = candidate;
@@ -191,7 +223,8 @@ public class Monster : MonoBehaviour
 			}
 		}
 
-		// Budget exhausted: use the spot that was furthest outside the view cone.
+		// Budget exhausted: use the furthest-outside-the-cone spot that was validated; if none
+		// passed validation the monster stays put instead of jumping into a wall or a gap.
 		transform.position = fallback;
 		inView = false;
 	}
@@ -220,6 +253,20 @@ public class Monster : MonoBehaviour
 			return !hitPlayer;   // blocked by geometry => hidden; blocked by the player => still visible
 		}
 		return false;            // clear line of sight => visible
+	}
+
+	/// <summary>True when the spot has solid floor at the expected height and no geometry
+	/// occupying the monster's body space.</summary>
+	bool IsValidDestination(Vector3 candidate)
+	{
+		RaycastHit ground;
+		if (!Physics.Raycast(candidate + Vector3.up * 2f, Vector3.down, out ground, 4f,
+			Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+			return false;
+		if (Mathf.Abs(ground.point.y - candidate.y) > 1.2f) return false;
+
+		return !Physics.CheckSphere(candidate + Vector3.up * 0.9f, 0.4f,
+			Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
 	}
 
 	void FacePlayer(){

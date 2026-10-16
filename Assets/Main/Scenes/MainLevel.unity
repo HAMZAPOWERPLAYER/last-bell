@@ -1944,6 +1944,7 @@ MonoBehaviour:
   requiredKeys: 2
   doorVisual: {fileID: 1927690330}
   doorBlocker: {fileID: 1927690331}
+  openClip: {fileID: 8300000, guid: 056367deea33dfc4e9575670f91ce365, type: 3}
   openAngle: 95
   openDuration: 0.9
 --- !u!1001 &81281058
@@ -5596,7 +5597,7 @@ MonoBehaviour:
   ambientSource: {fileID: 199680022}
   duckedVolume: 0.25
   fadeTime: 0.6
-  entrySting: {fileID: 0}
+  entrySting: {fileID: 8300000, guid: 056367deea33dfc4e9575670f91ce365, type: 3}
   stingSource: {fileID: 0}
   retriggerCooldown: 20
 --- !u!65 &295800621
@@ -7196,7 +7197,7 @@ MonoBehaviour:
   ambientSource: {fileID: 199680022}
   duckedVolume: 0.25
   fadeTime: 0.6
-  entrySting: {fileID: 0}
+  entrySting: {fileID: 8300000, guid: 056367deea33dfc4e9575670f91ce365, type: 3}
   stingSource: {fileID: 0}
   retriggerCooldown: 20
 --- !u!65 &378457523
@@ -8258,7 +8259,7 @@ MonoBehaviour:
   ambientSource: {fileID: 199680022}
   duckedVolume: 0.25
   fadeTime: 0.6
-  entrySting: {fileID: 0}
+  entrySting: {fileID: 8300000, guid: 056367deea33dfc4e9575670f91ce365, type: 3}
   stingSource: {fileID: 0}
   retriggerCooldown: 20
 --- !u!65 &454802946
@@ -8631,8 +8632,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   openDoor_UI: {fileID: 1083586051}
   door_source: {fileID: 473736430}
-  door_clip: {fileID: 0}
-  doorSoundDelay: 0
+  door_clip: {fileID: 8300000, guid: 056367deea33dfc4e9575670f91ce365, type: 3}
+  doorSoundDelay: 1
 --- !u!82 &473736430
 AudioSource:
   m_ObjectHideFlags: 0
@@ -17244,7 +17245,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 0}
-  m_RaycastTarget: 1
+  m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
@@ -25813,7 +25814,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e2ec1fc966ade5b479c95885e614f042, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  ambientClips: []
+  ambientClips:
+  - {fileID: 8300000, guid: 5e92f3d96d21cd94196751fb7a7ca7ed, type: 3}
+  - {fileID: 8300000, guid: 1227afecdc0626f4c9af8e1557f051f6, type: 3}
+  - {fileID: 8300000, guid: 056367deea33dfc4e9575670f91ce365, type: 3}
   minInterval: 12
   maxInterval: 35
   minVolume: 0.3
@@ -31781,6 +31785,7 @@ MonoBehaviour:
   requiredKeys: 1
   doorVisual: {fileID: 320977580}
   doorBlocker: {fileID: 1819557374}
+  openClip: {fileID: 8300000, guid: 056367deea33dfc4e9575670f91ce365, type: 3}
   openAngle: 95
   openDuration: 0.9
 --- !u!1 &1857609739
@@ -31831,7 +31836,7 @@ MonoBehaviour:
   ambientSource: {fileID: 199680022}
   duckedVolume: 0.25
   fadeTime: 0.6
-  entrySting: {fileID: 0}
+  entrySting: {fileID: 8300000, guid: 056367deea33dfc4e9575670f91ce365, type: 3}
   stingSource: {fileID: 0}
   retriggerCooldown: 20
 --- !u!65 &1857609742

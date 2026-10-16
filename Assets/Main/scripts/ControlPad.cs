@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.EnhancedTouch;
 using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 using TouchPhase = UnityEngine.InputSystem.TouchPhase;
@@ -53,9 +54,35 @@ namespace NeKoRoSYS.InputHandling.Mobile
             {
                 var touching = touch.phase is TouchPhase.Began;
                 var notTouching = touch.phase is TouchPhase.Ended or TouchPhase.Canceled or TouchPhase.None;
-                if (IsTouchingPad(touch) && touching && availableTouchIds.Count < touchLimit) availableTouchIds.Add(touch.touchId);
+                if (IsTouchingPad(touch) && touching && availableTouchIds.Count < touchLimit)
+                {
+                    // A touch that begins on top of interactive UI (HUD buttons, pause button) must
+                    // not also drive the camera - the pad used to steal those touches and the view
+                    // rotated while the player tapped a button. Ownership is decided at touch-down.
+                    if (!IsOverUI(touch.screenPosition)) availableTouchIds.Add(touch.touchId);
+                }
                 else if (notTouching) availableTouchIds.Remove(touch.touchId);
             }
+        }
+
+        private readonly List<RaycastResult> uiRaycastResults = new List<RaycastResult>();
+
+        /// <summary>True when the screen position lands on interactive UI that is not part of this pad.</summary>
+        private bool IsOverUI(Vector2 screenPosition)
+        {
+            var es = EventSystem.current;
+            if (es == null) return false;
+            uiRaycastResults.Clear();
+            var data = new PointerEventData(es) { position = screenPosition };
+            es.RaycastAll(data, uiRaycastResults);
+            for (int i = 0; i < uiRaycastResults.Count; i++)
+            {
+                var hit = uiRaycastResults[i].gameObject;
+                if (hit == null) continue;
+                if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;
+                return true;
+            }
+            return false;
         }
 
         private void ProcessInput(Touch touch)

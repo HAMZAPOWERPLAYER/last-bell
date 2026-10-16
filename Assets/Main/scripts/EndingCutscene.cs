@@ -25,6 +25,8 @@ public class EndingCutscene : MonoBehaviour
     [Range(0f, 1f)] public float impactVolume = 0.46f;
     [Range(0f, 1f)] public float screamVolume = 0.52f;
 
+    const string TruthKey = "Save.Truth";
+    bool secretTruth;
     CanvasGroup menuCanvasGroup;
     GameObject overlayRoot;
     GameObject stagedMonster;
@@ -48,6 +50,16 @@ public class EndingCutscene : MonoBehaviour
 
     void Start()
     {
+        // 2.0 SECRET: "the whole story" beat. ExitTrigger records whether all six story pages
+        // were found in the winning run; consume it here so a stale flag can never leak into a
+        // later playthrough.
+        secretTruth = PlayerPrefs.GetInt(TruthKey, 0) == 1;
+        if (secretTruth)
+        {
+            PlayerPrefs.DeleteKey(TruthKey);
+            PlayerPrefs.Save();
+        }
+
         if (endingCamera == null) endingCamera = Camera.main;
         if (endingMenuCanvas == null)
         {
@@ -156,6 +168,15 @@ public class EndingCutscene : MonoBehaviour
         yield return FadeTo(0.97f, 0.5f);
         SetCard("YOU ESCAPED", "But the last bell was not for you.");
         yield return WaitUnscaled(1.2f);
+
+        // 2.0 SECRET ending: only when every story page was found this run.
+        if (secretTruth)
+        {
+            if (!isPlaying) yield break;
+            PlayEffect(impactHit, impactVolume * 0.4f);
+            SetCard("THE LOG IS COMPLETE", "Six pages. One name. Yours.");
+            yield return WaitUnscaled(2.4f);
+        }
     }
 
     /// <summary>Skips the cinematic and restores the existing ending buttons.</summary>

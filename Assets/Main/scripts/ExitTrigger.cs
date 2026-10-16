@@ -100,6 +100,10 @@ public class ExitTrigger : MonoBehaviour
         }
 
         isLoadingNextScene = true;
+        // 2.0 SECRET: record whether the whole story was found (all six pages) for the ending
+        // cutscene. Always written, so a stale flag can never leak into a later playthrough;
+        // EndRun's PlayerPrefs.Save() below is what persists it.
+        PlayerPrefs.SetInt("Save.Truth", RunSave.PagesCollected >= 6 ? 1 : 0);
         // 2.0 SAVE & CONTINUE: the run is complete the moment the door opens - delete the
         // checkpoint so the menu offers a clean PLAY instead of resuming an escaped run.
         GameManager.EndRun();

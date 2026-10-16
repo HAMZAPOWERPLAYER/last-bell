@@ -10,6 +10,8 @@ public class ProgressionGate : MonoBehaviour
     [Min(1)] public int requiredKeys = 1;
     public Transform doorVisual;
     public Collider doorBlocker;
+    [Tooltip("Optional one-shot played while the gate swings open (never on a save-restored gate).")]
+    public AudioClip openClip;
     [Range(45f, 135f)] public float openAngle = 95f;
     [Min(0.1f)] public float openDuration = 0.8f;
 
@@ -82,6 +84,8 @@ public class ProgressionGate : MonoBehaviour
 
         isOpen = true;
         if (doorBlocker != null) doorBlocker.enabled = false;
+        if (openClip != null)
+            AudioSource.PlayClipAtPoint(openClip, doorVisual != null ? doorVisual.position : transform.position, 0.9f * GameSettings.SfxVolume);
         if (gameManager != null){
             if (gameManager.currentGate == this) gameManager.SetCurrentGate(null);
             gameManager.OnGateUnlocked(this);

@@ -18,6 +18,7 @@ public class Controller : MonoBehaviour
 	public AudioSource _audiosource;
 	public AudioClip   walkaudio;
 	CharacterController characterController;
+	float stepPitchJitter = 1f;
 	
 	//NeKONTROLLER touch controls
 	public ControlStick movementStick;
@@ -69,7 +70,7 @@ public class Controller : MonoBehaviour
 			
 			Vector3 fwdMovement = Vector3.zero;
 			Vector3 rightMovement = Vector3.zero;
-			if(_audiosource != null) _audiosource.pitch = 0.7f;
+			if(_audiosource != null) _audiosource.pitch = 0.7f * stepPitchJitter;
 			
 			float speed = walkspeed;
 			Transform movementCamera = cam != null ? cam.transform : transform;
@@ -88,13 +89,20 @@ public class Controller : MonoBehaviour
 			// which no touch device can ever press.
 			if(movementStick.FullInput){
 				speed = runspeed;
-				if(_audiosource != null) _audiosource.pitch = 1f;
+				if(_audiosource != null) _audiosource.pitch = stepPitchJitter;
 			}
 			
 			// Footsteps only while actually moving and grounded (upstream played the loop permanently).
 			if(_audiosource != null){
 				if(isMoving && characterController.isGrounded){
-					if(!_audiosource.isPlaying) _audiosource.Play();
+					if(!_audiosource.isPlaying){
+						// Slight pitch variation per step burst so a single footstep asset does not
+						// sound like a mechanical loop. (Per-sample variation would need split step
+						// clips - out of scope for now.)
+						stepPitchJitter = Random.Range(0.94f, 1.06f);
+						_audiosource.pitch = (movementStick.FullInput ? 1f : 0.7f) * stepPitchJitter;
+						_audiosource.Play();
+					}
 				}else if(_audiosource.isPlaying){
 					_audiosource.Stop();
 				}
