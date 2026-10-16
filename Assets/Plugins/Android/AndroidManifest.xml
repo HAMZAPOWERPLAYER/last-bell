@@ -5,11 +5,22 @@
   always declares in the unityLibrary manifest. The game is fully offline: no network access of
   any kind, and the release policy check greps the built AAB for android.permission.INTERNET.
 
+  IMPORTANT: a custom main manifest REPLACES Unity's launcher template, so the launcher
+  activity must be declared here explicitly. Unity cannot infer it and logs
+  "Unable to find Unity activity in manifest. Some attributes may not be set properly and need
+  to be set manually." (seen in LauncherManifestDiag for the first 2.0 build, whose AAB
+  shipped without a launcher entry). The activity below mirrors element-for-element the
+  activity Unity's own pipeline produced in the previous builds - verified by decoding the
+  0.4-v4 AAB binary AndroidManifest.xml with aapt2 (configChanges mask, exported flag,
+  singleTask, reverseLandscape, resizeableActivity, hardwareAccelerated, both meta-data).
+
   The manifest merger gives this main manifest priority over the unityLibrary manifest, so the
   tools:node="remove" directive below wins and the final merged manifest ships without INTERNET.
 
-  Verification after a build (documented in RELEASE_CHECKLIST.md):
-    bundletool dump manifest (bundle path) | grep -i internet    (expect no output, see checklist)
+  Verification after a build (see RELEASE_CHECKLIST.md): decode the AAB's binary manifest and
+  assert UnityPlayerActivity + LAUNCHER intent present and INTERNET absent. Use aapt2
+  xmltree dump on a shell zip that carries the extracted base/manifest/AndroidManifest.xml
+  at its root (zip root file name: AndroidManifest.xml).
 -->
 <manifest
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -21,7 +32,25 @@
 
     <application
         android:label="@string/app_name"
-        android:icon="@mipmap/app_icon" />
+        android:icon="@mipmap/app_icon">
+
+        <activity
+            android:name="com.unity3d.player.UnityPlayerActivity"
+            android:theme="@style/UnityThemeSelector"
+            android:launchMode="singleTask"
+            android:screenOrientation="reverseLandscape"
+            android:exported="true"
+            android:resizeableActivity="false"
+            android:hardwareAccelerated="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
+            <meta-data android:name="notch_support" android:value="true" />
+        </activity>
+    </application>
 
     <supports-screens
         android:smallScreens="true"

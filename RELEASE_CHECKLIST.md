@@ -1,41 +1,66 @@
 # THE LAST BELL 2.0 — Release Checklist
 
-Status: **code-complete on `feature/last-bell-2.0`; signed build + on-device pass are user-side.**
+Status: **2.0 signed build verified (2026-10-16); on-device pass is user-side.**
 Version: **2.0** (version code **20**) · Package: `com.hamzapowerplayer.lastbell` · Unity 2022.3.62f3 · Built-in RP · ARM64 · IL2CPP · minSdk 24 / target 36.
 
 ---
 
-## 1. Build (user-side — needs the keystore password)
+## 1. Build (done 2026-10-16 — reproduce from the editor if needed)
+
+The signed 2.0 AAB was built **in-editor** on 2026-10-16 (Succeeded, `jarsigner`: *jar
+verified*). To reproduce:
 
 1. Unity → **File ▸ Build Settings** → Android → **Build App Bundle (Google Play)** ☑.
-2. Keystore: *Player Settings ▸ Publishing Settings* → keystore `C:/MOBILE-Keys/lastbell.keystore`, alias `lastbell` — **password is not stored in the repo, enter it when Unity asks.**
+2. Keystore: *Player Settings ▸ Publishing Settings* → keystore `C:/MOBILE-Keys/lastbell.keystore`,
+   alias `lastbell` — the passwords live in the editor project settings / `Library/`
+   (gitignored), never in the repo.
 3. Build. Output goes where the Build Settings window points (historically `Builds/`).
-4. Record the AAB hash (`certutil -hashfile <file> SHA256` or `Get-FileHash`) — compare with the previous record in `Builds/`.
+4. Record the AAB hash (`certutil -hashfile <file> SHA256` or `Get-FileHash`) — compare with the
+   build record in this file (§6) and `Builds/aab_verification_2.0-code20.txt`.
 
 ## 2. Verify the offline manifest (the INTERNET fix)
 
-The 2.0 build carries a **custom main manifest** (`Assets/Plugins/Android/AndroidManifest.xml`) that removes the INTERNET permission Unity declares in its library manifest.
-After building, verify the merged manifest — **one** of these, whichever tooling is at hand:
+The 2.0 build carries a **custom main manifest** (`Assets/Plugins/Android/AndroidManifest.xml`) that:
+1. removes the INTERNET permission Unity declares in its library manifest (`tools:node="remove"`), and
+2. declares the **UnityPlayerActivity** explicitly — a custom main manifest *replaces* Unity's
+   launcher template, so without this the bundle ships with **no launcher entry** (Unity logs
+   `LauncherManifestDiag.txt: Unable to find Unity activity in manifest` during the build).
+   The first 2.0 build hit this; the activity is now mirrored element-for-element from the
+   pre-2.0 builds (decoded from their binary manifest with aapt2).
+
+After building, verify the **binary manifest inside the AAB** (this is the authoritative check):
 
 ```powershell
-# Preferred: bundletool
-bundletool dump manifest --bundle <app.aab> | Select-String -i "internet"        # expect: no output
+# 1. extract base/manifest/AndroidManifest.xml from the AAB and put it at the root of a shell zip
+$aab  = 'Builds\LastBell-2.0-code20.aab'
+$tmp  = "$env:TEMP\lb_manifest.bin"
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip  = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $aab).Path)
+$e    = $zip.Entries | Where-Object { $_.FullName -eq 'base/manifest/AndroidManifest.xml' }
+$ms   = New-Object System.IO.MemoryStream; $s = $e.Open(); $s.CopyTo($ms); $s.Close(); $zip.Dispose()
+[System.IO.File]::WriteAllBytes($tmp, $ms.ToArray())
+$apk  = "$env:TEMP\lb_shell.apk"; if (Test-Path $apk) { Remove-Item $apk }
+$z    = [System.IO.Compression.ZipFile]::Open($apk, 'Create')
+$en   = $z.CreateEntry('AndroidManifest.xml')
+$es   = $en.Open(); $b = [System.IO.File]::ReadAllBytes($tmp); $es.Write($b, 0, $b.Length); $es.Close(); $z.Dispose()
 
-# Alternative: aapt2 on a base APK extracted from the AAB
-aapt2 dump permissions <split>.apk                                               # expect: no INTERNET line
+# 2. decode and inspect
+& 'C:\Android\Sdk\build-tools\36.0.0\aapt2.exe' dump xmltree $apk --file AndroidManifest.xml |
+    Select-String -Pattern 'UnityPlayerActivity|LAUNCHER|INTERNET|versionName|versionCode'
 ```
 
-Also confirm `android:exported="true"` is still on `com.unity3d.player.UnityPlayerActivity` in the merged manifest (it comes from Unity's library manifest; this is a sanity check that the merge behaved).
-
-If INTERNET still appears: the custom main manifest was not picked up — confirm the file is exactly at `Assets/Plugins/Android/AndroidManifest.xml` (not inside a sub-folder) and rebuild.
+Expected: **UnityPlayerActivity + android.intent.category.LAUNCHER present, no INTERNET line,
+`versionCode` = 20, `versionName` = 2.0**. If `bundletool` is available, its manifest dump works
+too. If INTERNET still appears: the custom main manifest was not picked up — confirm it sits
+exactly at `Assets/Plugins/Android/AndroidManifest.xml` and rebuild.
 
 ## 3. Signing / store prep
 
-- [ ] AAB signed with `lastbell.keystore` (verify with `jarsigner -verify -verbose <app.aab>`).
-- [ ] Version name `2.0`, version code `20` visible in the bundle.
-- [ ] App icon present in the bundle (6 mipmap slots from `LastBellAppIcon.jpg` — 2.0 assigns them; the launcher visual check happens on-device).
-- [ ] No analytics/ad/account SDK permissions in the merged manifest (only the expected storage/vibrate set Unity adds).
-- [ ] Privacy: the game is **fully offline** — no network code paths ship in 2.0.
+- [x] AAB signed with `lastbell.keystore` — `jarsigner -verify -certs` → *jar verified* (2026-10-16).
+- [x] Version name `2.0`, version code `20` present in the bundle manifest (decoded, 2026-10-16).
+- [x] App icon present in the bundle (6 mipmap densities `base/res/mipmap-*/app_icon.png`; the launcher visual check happens on-device).
+- [x] No analytics/ad/account SDK permissions — the final manifest has **zero** `uses-permission` nodes.
+- [x] Privacy: the game is **fully offline** — INTERNET absent from the shipped bundle (2026-10-16).
 
 ## 4. On-device acceptance (physical phone)
 
@@ -53,3 +78,16 @@ Run the §12 checklist in `README.md`, plus the 2.0-specific additions:
 - Adaptive launcher icon not authored (square source; launcher masks it).
 - Extra "lore note" props deferred (six-page story system already covers the narrative beat).
 - Additional accessibility (text scaling) deferred to 2.1.
+
+## 6. Build record (2026-10-16)
+
+| | |
+|---|---|
+| Artifact | `Builds/LastBell-2.0-code20.aab` — 39.0 MB |
+| Mirrors | `Builds/archive/` (AAB + symbols + full verification record) |
+| Build result | `Succeeded` · errors 0 · warnings 5 |
+| Signature | `jarsigner` → *jar verified* (self-signed upload key; no timestamp — normal) |
+| SHA-256 (AAB) | `2F205919621EAA3B4F37AC3AA3FE34329307A11B8F3973020AA9DA9D93C010C7` |
+| SHA-256 (symbols) | `4F838555B30242DD24859AD0F771BCDB630EE7D549DF2AD967A62B348DF28F1D` |
+| Manifest facts | code 20 · name 2.0 · minSdk 24 / target 36 · arm64-v8a · **0 `uses-permission` nodes (INTERNET absent)** · `UnityPlayerActivity` + MAIN/LAUNCHER + `exported=true` |
+| Full record | `Builds/aab_verification_2.0-code20.txt` |

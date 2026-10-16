@@ -22,7 +22,7 @@ and when the final bell rings, run.
 | Field | Value |
 |---|---|
 | **Current release** | `2.0` (bundleVersion) · AndroidBundleVersionCode `20` |
-| **Latest artifact** | `Builds/LastBell-0.4-v4.aab` — 39.0 MB · ARM64 · IL2CPP · `jar verified` (**2.0 build pending**) |
+| **Latest artifact** | `Builds/LastBell-2.0-code20.aab` — 39.0 MB · ARM64 · IL2CPP · `jar verified` · SHA-256 `2F2059…10C7` (**archived in `Builds/archive/`**) |
 | **Artifact SHA-256** | `CA484BC584D52286B62C3DA6B314052741DEECC3F26B98B499796CF159CF6804` |
 | **Repository** | <https://github.com/HAMZAPOWERPLAYER/last-bell> |
 | **Document owner** | HAMZA POWERPLAYER |
@@ -515,23 +515,24 @@ repair scene wiring.
 2. **Build the AAB** from Unity (Build Settings ▸ Build App Bundle ticked), supplying the
    keystore password in Player Settings ▸ Publishing. The password is **never committed**; it
    lives only in the editor session / `Library/` (gitignored).
-3. **Verify** the bundle and record the evidence next to it (see the record format used by
-   `Builds/aab_verification_0.4-v4.txt`):
+3. **Verify** the bundle and record the evidence next to it (record:
+   `Builds/aab_verification_2.0-code20.txt`, mirrored in `Builds/archive/`):
    - `jarsigner -verify -verbose -certs` → expect `jar verified.`
    - SHA-256 of the AAB and of the IL2CPP symbols zip.
    - Identity read from the bundle's own `base/manifest/AndroidManifest.xml`
      (package / versionName / versionCode / SDK levels).
    - Native ABIs packaged (`arm64-v8a` only) and scenes baked (`level0..level4`).
-4. **Archive** the AAB + symbols zip in `Builds/` (gitignored — keep them backed up elsewhere,
-   e.g. Play Console or artifact storage).
+4. **Archive** the AAB + symbols zip under `Builds/archive/` (Builds/ is gitignored — keep them
+   backed up elsewhere too, e.g. Play Console or artifact storage).
 
 ### Release history
 
 | Artifact | Version (code) | Size | Notes |
 |---|---|---|---|
-| `Builds/LastBell-0.4-v4.aab` | 0.4 (4) | 39.0 MB | Current — `jar verified`, SHA-256 recorded, symbols archived |
-| `Builds/LastBell-API36.aab` | 0.2 (3) | — | targetSdk 36 experiment |
-| `Builds/LastBell-0.2-v2.aab` | 0.2 (2) | 38 MB | First Play-ready bundle |
+| `Builds/LastBell-2.0-code20.aab` | 2.0 (20) | 39.0 MB | **Current** — `jar verified`, SHA-256 recorded, INTERNET absent, launcher verified, symbols archived (`Builds/archive/`) |
+| `Builds/LastBell-0.4-v4.aab` | 0.4 (4) | 39.0 MB | Superseded — no longer present locally (removed in the 2026-10-16 cleanup) |
+| `Builds/LastBell-API36.aab` | 0.2 (3) | — | targetSdk 36 experiment — removed in the 2026-10-16 cleanup |
+| `Builds/LastBell-0.2-v2.aab` | 0.2 (2) | 38 MB | First Play-ready bundle — removed in the 2026-10-16 cleanup |
 | `Builds/LastBell-0.1-v1-IL2CPP.symbols.zip` | 0.1 (1) | — | Symbols only (early IL2CPP pipeline test) |
 
 ### CI/CD
@@ -553,10 +554,10 @@ The intended pipeline is documented end-to-end in [CLOUD_BUILD.md](CLOUD_BUILD.m
 
 ### Play Store release checklist
 
-- [ ] Version code incremented.
-- [ ] Release AAB built, `jarsigner` verified, hash recorded.
-- [ ] Symbols zip archived for crash symbolication.
-- [x] **App icon assigned in Player Settings** (6 slots, 2.0 — visual check on a device still pending).
+- [ ] Version code incremented (only if Play Console already holds code 20 — the 2.0 build is code 20).
+- [x] Release AAB built, `jarsigner` verified, hash recorded (2026-10-16 — `Builds/aab_verification_2.0-code20.txt`).
+- [x] Symbols zip archived for crash symbolication (`Builds/archive/`).
+- [x] **App icon assigned in Player Settings** (6 slots, 2.0; icon present in the bundle — visual check on a device still pending).
 - [ ] Store listing / screenshots refreshed (see `Screenshots/`).
 - [ ] On-device acceptance pass (§12) on a physical device.
 
@@ -698,7 +699,7 @@ base menu canvas and is not reachable from the shipped UI.
 | Priority | Item |
 |---|---|
 | P0 | Complete the first **end-to-end on-device run** (spawn → 3 keys → gates → escape → ending). |
-| P0 | Rebuild the **signed 2.0 AAB** (app icon now assigned; verify the INTERNET permission is gone — see `RELEASE_CHECKLIST.md`). |
+| P0 | ~~Rebuild the signed 2.0 AAB~~ — **done 2026-10-16**: signed, `jar verified`, INTERNET absent, launcher activity verified (record: `Builds/aab_verification_2.0-code20.txt`). Remaining: upload to Play Console + the on-device pass. |
 | P1 | Neutralize local `file:` packages and commit the **CI workflow** (`.github/workflows/android.yml` per CLOUD_BUILD.md). |
 | P1 | Delete legacy `StandaloneInputModule` from the 5 scenes to silence the EventSystem warning. |
 | P2 | **Optional:** resume spawn points — remember roughly where the player was instead of the level start. |

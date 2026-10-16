@@ -1,8 +1,9 @@
 # THE LAST BELL 2.0 — Test Report
 
 All results below were produced **in-editor via the live Unity bridge** (`127.0.0.1:8080`) on
-Unity 2022.3.62f3, Built-in RP. Everything that requires a **signed build or a physical
-device** is listed as UNVERIFIED at the end — it could not be produced from this seat.
+Unity 2022.3.62f3, Built-in RP. The **signed 2.0 production AAB** was built and verified from
+this seat on 2026-10-16 (rows 18–22). The remaining UNVERIFIED items are physical-device
+checks, listed at the end.
 
 ---
 
@@ -27,23 +28,49 @@ device** is listed as UNVERIFIED at the end — it could not be produced from th
 | 15 | Android icons | All **6** slots = `LastBellAppIcon` (readable + uncompressed, 2048×2048) — was 0/6 |
 | 16 | Custom main manifest | XML well-formed; exactly 1 `uses-permission` node: `android.permission.INTERNET` with `tools:node="remove"` |
 | 17 | Editor left clean | MainLevel open, not dirty, not playing; run save cleared; `Save.Truth` absent; `opt_reduceFlashing = 0`; console errors `[]` |
+| 18 | **2.0 production AAB** | `BuildReport.result = Succeeded`, errors 0 — `Builds/LastBell-2.0-code20.aab` (39.0 MB, SHA-256 `2F205919…93C010C7`); symbols zip archived |
+| 19 | **INTERNET absent in the shipped bundle** | aapt2 decode of the bundle's binary manifest: **no `uses-permission` nodes at all** |
+| 20 | **Launcher entry in the shipped bundle** | `com.unity3d.player.UnityPlayerActivity` present + `MAIN`/`LAUNCHER` intent + `exported=true` (this is the check that caught the first build missing its launcher entirely) |
+| 21 | **Bundle signature** | `jarsigner -verify -certs` → **jar verified** (self-signed upload key, no timestamp — normal) |
+| 22 | **Bundle identity & payload** | versionCode 20 · versionName 2.0 · minSdk 24 / targetSdk 36 · arm64-v8a only · level0..level4 · record `Builds/aab_verification_2.0-code20.txt` |
 
 Notes on test 13: the Device Simulator models the Pixel 5 punch-hole in landscape; the clamp
 was verified for both the no-op case (authored margin already sufficient) and the engage case
 (exact expected offset). The first implementation had a scale-source bug (pixel width instead
 of `scaleFactor`) — this live test caught it; the fixed version is what passed above.
 
-## UNVERIFIED — requires a signed build or a physical device (user-side)
+## UNVERIFIED — physical-device checks (user-side)
+
+The signed-build items from earlier revisions of this report (2.0 AAB build; INTERNET removal in
+the merged manifest) are now **verified** — see rows 18–22.
 
 | Item | Why it is blocked |
 |---|---|
-| 2.0 signed AAB build | Keystore password is not stored (by policy); user enters it at build time |
-| INTERNET actually removed from the merged manifest | Only provable by dumping a built bundle (`bundletool`/`aapt2`) — command in `RELEASE_CHECKLIST.md` §2 |
-| App icon on a real launcher (mask shape, quality) | Device-side visual |
+| App icon on a real launcher (mask shape, quality) | Device-side visual (the icon IS in the bundle — 6 mipmap densities, verified) |
 | Safe area on a real notched/punch-hole phone | Only the Simulator was available here |
 | FPS / memory / thermal / loading times | Device measurements; README §12.9 remains the outstanding performance evidence |
 | Audio output (levels, clipping) | Clips wired by design from existing assets; nobody has auditioned the 2.0 mix on hardware |
 | Full end-to-end device run | Pre-existing outstanding item (README §12.8) |
+
+## Build incidents — 2026-10-16
+
+1. **First production build shipped without a launcher entry.** A custom main manifest replaces
+   Unity's launcher template; Unity only logs
+   `LauncherManifestDiag.txt: Unable to find Unity activity in manifest` and still reports build
+   success, but `UnityPlayerActivity` was absent — the app would install and never launch. Caught
+   by decoding the AAB's binary manifest with aapt2, not by the build result. Fixed by declaring
+   the activity in the custom manifest (element-for-element from the previous builds); the final
+   bundle passes the launcher checks (row 20).
+2. **Stuck "scripts have compile errors" state.** Duplicate queued build callbacks re-fired
+   after a completed build and started reentrant build attempts; Unity's build system hit an
+   internal error and left `scriptCompilationFailed = true`, so every further build failed
+   instantly with "Error building Player because scripts have compile errors in the editor" —
+   despite the sources compiling cleanly. No source files were affected; cleared with a forced
+   script recompile, after which the build succeeded (row 18).
+3. **Builds/ folder cleanup.** The loose files in `Builds/` (older bundles, their records, logs)
+   were removed externally during the incident window. The 2.0 bundle + symbols were
+   re-materialized by the following build and are now mirrored in `Builds/archive/` so a repeat
+   cleanup cannot take the current artifacts.
 
 ## Known accepted gaps
 

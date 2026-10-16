@@ -2,7 +2,8 @@
 
 Branch `feature/last-bell-2.0` · version stays **2.0** (version code 20) · 2026-10.
 
-Commits: Phase 0 audit `b34c625` · Phases 1–2 `e766ea7` · Phases 3–6 (this commit).
+Commits: Phase 0 audit `b34c625` · Phases 1–2 `e766ea7` · Phases 3–6 `82e3506` · release build +
+manifest fix (tip of branch, 2026-10-16).
 
 ---
 
@@ -80,19 +81,48 @@ Enemy fairness (`Monster.cs`):
 ## Phase 5 — Offline release hardening
 
 - Custom main manifest `Assets/Plugins/Android/AndroidManifest.xml`: mirrors Unity's launcher
-  template and adds `<uses-permission android:name="android.permission.INTERNET"
-  tools:node="remove"/>`. INTERNET originates in Unity's **unityLibrary** manifest; the launcher
-  manifest outranks it in the merger, so the directive wins. XML validated after write.
+  template, declares the launcher activity, and adds
+  `<uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>`.
+  INTERNET originates in Unity's **unityLibrary** manifest; the launcher manifest outranks it in
+  the merger, so the directive wins. XML validated after write.
+- **Trap found during the first production build — a custom main manifest replaces Unity's
+  launcher template.** Unity only logs a soft warning
+  (`LauncherManifestDiag.txt: Unable to find Unity activity in manifest. Some attributes may not
+  be set properly and need to be set manually.`) and the build reports **success**, but the
+  bundle ships **without a launcher entry** (installs, cannot launch). Caught by decoding the
+  AAB's binary manifest with `aapt2`. The manifest now declares
+  `com.unity3d.player.UnityPlayerActivity` element-for-element as Unity's own pipeline did in
+  the pre-2.0 builds (decoded from the 0.4-v4 AAB binary manifest): `exported="true"`,
+  `theme=@style/UnityThemeSelector`, `launchMode=singleTask`,
+  `screenOrientation=reverseLandscape`, the full `configChanges` mask,
+  `resizeableActivity="false"`, `hardwareAccelerated="false"`, `MAIN`/`LAUNCHER` intent filter,
+  and both meta-data (`unityplayer.UnityActivity`, `notch_support`).
 - Superseded `AndroidManifest.xml.DISABLED` removed (it was the wrong shape — it redeclared the
-  activity without `android:exported`).
-- Post-build verification (INTERNET grep) documented in `RELEASE_CHECKLIST.md` — **requires a
-  build, which is user-side (keystore password).**
+  activity without `android:exported` and without Unity's attribute set).
+- Post-build verification documented in `RELEASE_CHECKLIST.md` §2: decode the AAB's binary
+  manifest and assert `UnityPlayerActivity` + `LAUNCHER` present and INTERNET absent — the
+  procedure is proven on this machine with `aapt2` (Android SDK build-tools 36.0.0).
 
 ## Phase 6 — Documentation & evidence
 
 - `CHANGELOG_2.0.md` (this file), `AI_STATE_DIAGRAM.md`, `RELEASE_CHECKLIST.md`,
   `TEST_REPORT.md`, README status/roadmap refresh, proof screenshot
   `Screenshots/lastbell_menu_6row_2.0.png`.
+
+## Release build — 2026-10-16
+
+- Production AAB built in-editor from this branch: `Builds/LastBell-2.0-code20.aab` (39.0 MB,
+  ARM64/IL2CPP, code 20) — `BuildReport.result = Succeeded`, `jarsigner` → *jar verified*.
+- Verified from the bundle's own binary manifest (aapt2): `UnityPlayerActivity` present with
+  `MAIN`/`LAUNCHER`, `exported=true`; **no `uses-permission` nodes — INTERNET absent**;
+  versionCode 20 / versionName 2.0; arm64-v8a only; level0..level4.
+- Evidence: `Builds/aab_verification_2.0-code20.txt`; bundle + symbols mirrored in
+  `Builds/archive/`. SHA-256 (AAB) `2F2059…10C7`.
+- Two build-system incidents were found and resolved along the way: (1) the first production
+  build shipped **without a launcher activity** — see the Phase 5 note above; (2) duplicate
+  queued build callbacks caused reentrant build attempts that left Unity with a stuck
+  "scripts have compile errors" state — cleared with a forced script recompile; no source files
+  were affected.
 
 ## Not changed (by policy)
 
